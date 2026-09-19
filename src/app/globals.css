@@ -1,0 +1,407 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.185 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Indeterminate progress bar animation */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  50% {
+    transform: translateX(200%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* Slim, slick scrollbar — apply to any scrollable element with `.slim-scrollbar`. */
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 120, 120, 0.35) transparent;
+}
+.slim-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(120, 120, 120, 0.3);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: content-box;
+  transition: background-color 150ms ease;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(120, 120, 120, 0.55);
+}
+.slim-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Static gradient border (chatbot pill). */
+.chat-flowing-border {
+  position: relative;
+  padding: 1.5px;
+  border-radius: 1.25rem;
+  background: linear-gradient(
+    135deg,
+    #fb923c 0%,
+    #ec4899 35%,
+    #8b5cf6 65%,
+    #3b82f6 100%
+  );
+}
+
+.chat-flowing-border > * {
+  border-radius: calc(1.25rem - 1.5px);
+}
+
+/* Hide React Flow handles by default, show on hover */
+/* Hide React Flow handles by default, show on hover */
+.react-flow__handle {
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Increase clickable area while keeping visual dot small */
+  width: 12px !important;
+  height: 12px !important;
+  border-radius: 50%;
+  background: var(--muted-foreground) !important;
+  border: 2px solid var(--background) !important;
+  z-index: 50;
+}
+
+/* Show handles when hovering over the node or the handle itself */
+.react-flow__node:hover .react-flow__handle,
+.react-flow__handle:hover {
+  opacity: 1;
+  transform: scale(1.2);
+}
+
+.react-flow__handle:hover {
+  background: var(--primary) !important;
+  border-color: var(--background) !important;
+  box-shadow: 0 0 0 2px var(--primary-foreground);
+}
+
+.controls-addon .react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+.react-flow__controls-button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--foreground);
+}
+
+.react-flow__controls-button:hover {
+  background: var(--accent) !important;
+}
+
+/* Line clamp utility for text truncation */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.nextra-mobile-nav {
+  @apply bg-background text-foreground;
+}
+
+/* FullCalendar theme overrides for schedule page */
+.schedule-calendar {
+  --fc-border-color: var(--border);
+  --fc-today-bg-color: var(--accent);
+  --fc-neutral-bg-color: transparent;
+  --fc-page-bg-color: transparent;
+  --fc-event-bg-color: var(--secondary);
+  --fc-event-border-color: var(--border);
+  --fc-event-text-color: var(--foreground);
+}
+
+.schedule-calendar .fc {
+  font-family: inherit;
+}
+
+/* Header toolbar */
+.schedule-calendar .fc .fc-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.schedule-calendar .fc .fc-toolbar-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.schedule-calendar .fc .fc-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  box-shadow: none;
+}
+
+.schedule-calendar .fc .fc-button:hover {
+  background: var(--muted);
+}
+
+.schedule-calendar .fc .fc-button:active,
+.schedule-calendar .fc .fc-button:focus {
+  box-shadow: none;
+  outline: none;
+}
+
+/* Day header (Mon, Tue, ...) */
+.schedule-calendar .fc .fc-col-header-cell {
+  padding: 0.5rem 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+  border: none;
+  background: transparent;
+}
+
+.schedule-calendar .fc .fc-col-header-cell-cushion {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Day cells */
+.schedule-calendar .fc .fc-daygrid-day {
+  border-color: var(--border);
+  transition: background-color 0.15s;
+}
+
+.schedule-calendar .fc .fc-daygrid-day:hover {
+  background-color: var(--muted);
+}
+
+.schedule-calendar .fc .fc-daygrid-day-top {
+  flex-direction: row;
+  padding: 0.25rem 0.375rem 0;
+}
+
+.schedule-calendar .fc .fc-daygrid-day-number {
+  text-decoration: none;
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  padding: 0;
+}
+
+.schedule-calendar .fc .fc-day-other .fc-daygrid-day-number {
+  color: var(--muted-foreground);
+  opacity: 0.4;
+}
+
+.schedule-calendar .fc .fc-day-today {
+  background-color: var(--accent);
+}
+
+.schedule-calendar .fc .fc-day-today .fc-today-number {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border-radius: 9999px;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+}
+
+/* Events */
+.schedule-calendar .fc .fc-daygrid-event {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  margin: 1px 2px;
+  cursor: pointer;
+}
+
+.schedule-calendar .fc .fc-daygrid-event:hover {
+  background: var(--muted);
+}
+
+.schedule-calendar .fc .fc-daygrid-dot-event {
+  padding: 0;
+}
+
+/* More link */
+.schedule-calendar .fc .fc-daygrid-more-link {
+  color: var(--primary);
+  font-size: 0.6875rem;
+  font-weight: 500;
+}
+
+/* Day cell inner: layout for day number + hover add button */
+.schedule-calendar .fc-day-cell-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.schedule-calendar .fc-day-number {
+  font-size: 0.8125rem;
+  line-height: 1;
+}
+
+/* Hover add button — hidden by default, shown on day hover */
+.schedule-calendar .fc-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-foreground);
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background-color 0.15s, color 0.15s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.schedule-calendar .fc .fc-daygrid-day:hover .fc-add-btn {
+  opacity: 1;
+}
+
+.schedule-calendar .fc-add-btn:hover {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Remove scrollbar inside day cell area */
+.schedule-calendar .fc .fc-scroller {
+  overflow: visible !important;
+}
