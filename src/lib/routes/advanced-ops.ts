@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { runAdvancedOperation, type ProviderResult } from "../advanced-node-pipeline";
+import { toProviderAssetUrl } from "../asset-urls";
 import type { AdvancedOpId } from "../advanced-ops";
 import { waitWithAbort } from "../generation-utils";
 import type { HostAdapter } from "../host/types";
@@ -96,7 +97,7 @@ export function createUpscaleRoute(host: HostAdapter) {
       callProvider: ({ signal, providerSecret }) =>
         runEditingModel({
           prompt: `Upscale this image to ${factor}x resolution. Preserve all details, sharpness, and colors. Do not change composition.`,
-          bodyOptions: { imageUrls: [imageUrl], nVariants: 1 },
+          bodyOptions: { imageUrls: [toProviderAssetUrl(host, imageUrl)], nVariants: 1 },
           signal,
           providerSecret,
           timeoutMessage: "Upscale timed out",
@@ -125,7 +126,7 @@ export function createRemoveBgRoute(host: HostAdapter) {
         runEditingModel({
           prompt:
             "Remove the background of this image completely. Output a transparent PNG with only the main subject, cleanly cut out along the edges.",
-          bodyOptions: { imageUrls: [imageUrl], outputFormat: "png", nVariants: 1 },
+          bodyOptions: { imageUrls: [toProviderAssetUrl(host, imageUrl)], outputFormat: "png", nVariants: 1 },
           signal,
           providerSecret,
           timeoutMessage: "Background removal timed out",
@@ -166,7 +167,7 @@ export function createFaceConsistencyRoute(host: HostAdapter) {
       callProvider: ({ signal, providerSecret }) =>
         runEditingModel({
           prompt: `Keep the same face, identity, and distinguishing features as the reference image. Scene: ${prompt}`,
-          bodyOptions: { imageUrls: [referenceImageUrl], aspectRatio, nVariants: 1 },
+          bodyOptions: { imageUrls: [toProviderAssetUrl(host, referenceImageUrl)], aspectRatio, nVariants: 1 },
           signal,
           providerSecret,
           timeoutMessage: "Face consistency timed out",

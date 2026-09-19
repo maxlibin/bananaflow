@@ -15,9 +15,11 @@ export function createDownloadAssetRoute(host: HostAdapter) {
       return NextResponse.json({ error: "Missing url" }, { status: 400 });
     }
 
+    // Local-disk storage stores app-relative URLs; resolve them against this
+    // request's origin so the allow-list check sees a full URL.
     let parsed: URL;
     try {
-      parsed = new URL(url);
+      parsed = url.startsWith("/") ? new URL(url, request.nextUrl.origin) : new URL(url);
     } catch {
       return NextResponse.json({ error: "Invalid url" }, { status: 400 });
     }

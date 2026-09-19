@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createId } from "@paralleldrive/cuid2";
+import { toProviderAssetUrl } from "../asset-urls";
 import { denialResponse } from "../host/denial-response";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
@@ -190,7 +191,7 @@ export function createGenerateImageRoute(host: HostAdapter) {
     const created = await createImageProviderTask({
       model,
       prompt,
-      imageUrls: images.map((i) => i.imageUrl),
+      imageUrls: images.map((i) => toProviderAssetUrl(host, i.imageUrl)),
       settings,
       callBackUrl,
       providerSecret,

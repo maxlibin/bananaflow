@@ -5,7 +5,8 @@ import type { ObjectStorage } from "./types";
 export type LocalDiskStorageConfig = {
   // Absolute directory that receives uploaded files.
   rootDir: string;
-  // Origin of this app, e.g. http://localhost:3000, used to build asset URLs.
+  // Origin of this app, e.g. http://localhost:3000. Used to recognise our
+  // own asset URLs when they arrive in absolute form.
   appOrigin: string;
   // URL path under which `rootDir` is served, e.g. /uploads.
   publicPath: string;
@@ -27,13 +28,15 @@ function resolveInsideRoot(rootDir: string, key: string): string {
   return target;
 }
 
-// Stores uploads on the local filesystem. The app serves `rootDir` under
-// `publicPath` (see src/app/uploads/[...path]/route.ts in the open-source app).
+// Stores uploads on the local filesystem and hands out app-relative URLs
+// (`/uploads/<key>`). Relative URLs matter: the Next.js image optimizer
+// refuses to fetch absolute URLs that resolve to a private address, but
+// serves same-origin paths directly. The app serves `rootDir` under
+// `publicPath` (see src/app/uploads/[...path]/route.ts).
 export function createLocalDiskStorage(config: LocalDiskStorageConfig): ObjectStorage {
   const rootDir = path.resolve(config.rootDir);
-  const appOrigin = config.appOrigin.replace(/\/$/, "");
   const publicPath = config.publicPath.replace(/\/$/, "");
-  const appHost = new URL(appOrigin).hostname;
+  const appHost = new URL(config.appOrigin).host;
 
   return {
     async uploadAsset(input) {
@@ -41,10 +44,10 @@ export function createLocalDiskStorage(config: LocalDiskStorageConfig): ObjectSt
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, input.body);
       const encodedKey = input.key.split("/").map(encodeURIComponent).join("/");
-      return { url: `${appOrigin}${publicPath}/${encodedKey}`, pathname: input.key };
+      return { url: `${publicPath}/${encodedKey}`, pathname: input.key };
     },
     isAllowedAssetUrl(url) {
-      return url.hostname === appHost && url.pathname.startsWith(`${publicPath}/`);
+      return url.host === appHost && url.pathname.startsWith(`${publicPath}/`);
     },
   };
 }

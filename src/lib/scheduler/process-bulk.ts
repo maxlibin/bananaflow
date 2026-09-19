@@ -2,6 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { bulkRuns, media } from "../../db/schema";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
+import { toProviderAssetUrl } from "../asset-urls";
 import { runImageGenerationOnce } from "../run-image-generation-once";
 import type { ModelSnapshot } from "../../types/run-history";
 
@@ -116,7 +117,8 @@ export async function processBulk(
           settings: (row.modelSnapshot.settings as Record<string, unknown>) ?? {},
           imageUrls: (row.modelSnapshot.images ?? [])
             .map((i) => i.imageUrl)
-            .filter((u): u is string => typeof u === "string" && u.length > 0),
+            .filter((u): u is string => typeof u === "string" && u.length > 0)
+            .map((u) => toProviderAssetUrl(host, u)),
           providerSecret,
           signal,
           requestId: row.id,
