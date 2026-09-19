@@ -44,6 +44,13 @@ All settings are environment variables. `.env.example` documents every one; the 
 | `PUBLIC_BASE_URL` | Optional public origin for provider webhooks. Without it the scheduler polls the provider, which is fine for most deployments. |
 | `S3_*` | Optional S3-compatible storage (Cloudflare R2, AWS S3, MinIO). Leave unset for local disk under `./data/uploads`. |
 
+## Reference images and the provider
+
+Text-to-image and text-to-video work anywhere. Anything that sends one of your images to the provider (image-to-image, upscale, background removal, face consistency, video from a frame) needs the provider to download that image from a URL it can reach. With local-disk storage on `localhost` it cannot, so either:
+
+- set `PUBLIC_BASE_URL` to a tunnel or public origin for this app (uploads are then sent as `PUBLIC_BASE_URL/uploads/...`), or
+- use S3-compatible storage with a public bucket URL.
+
 ## How it works
 
 - `src/components/flow` is the canvas; `src/stores/board-store.tsx` holds a board's graph and drives generation.
