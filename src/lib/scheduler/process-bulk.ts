@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import { bulkRuns, media } from "../../db/schema";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
-import { toProviderAssetUrl } from "../asset-urls";
+import { IMAGE_MODELS } from "../model-registry";
 import { runImageGenerationOnce } from "../run-image-generation-once";
 import type { ModelSnapshot } from "../../types/run-history";
 
@@ -100,9 +100,14 @@ export async function processBulk(
 
   await Promise.allSettled(
     rows.map(async (row) => {
+      const info = IMAGE_MODELS[row.modelSnapshot.model];
+      if (!info) {
+        await markItemFailed(row, `Unknown model ${row.modelSnapshot.model}`);
+        return;
+      }
       let providerSecret: string;
       try {
-        providerSecret = await host.keys.resolveProviderKey(row.userId, "kie");
+        providerSecret = await host.keys.resolveProviderKey(row.userId, info.provider);
       } catch (error) {
         if (!(error instanceof ProviderKeyMissingError)) throw error;
         await markItemFailed(row, error.message);
@@ -117,8 +122,7 @@ export async function processBulk(
           settings: (row.modelSnapshot.settings as Record<string, unknown>) ?? {},
           imageUrls: (row.modelSnapshot.images ?? [])
             .map((i) => i.imageUrl)
-            .filter((u): u is string => typeof u === "string" && u.length > 0)
-            .map((u) => toProviderAssetUrl(host, u)),
+            .filter((u): u is string => typeof u === "string" && u.length > 0),
           providerSecret,
           signal,
           requestId: row.id,

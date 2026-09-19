@@ -36,6 +36,7 @@ import {
   DEFAULT_VIDEO_MODEL_SETTINGS,
   VIDEO_MODELS,
   VIDEO_MODEL_SETTING_OPTIONS,
+  videoModelsForProviders,
   type VideoModelSettings,
 } from "../../../lib/video-models";
 import { useBoardStore } from "../../../stores/board-store";
@@ -132,8 +133,11 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   const [showPreview, setShowPreview] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const canvasHost = useCanvasHost();
+  const availableModels = videoModelsForProviders(canvasHost.enabledProviders);
+  const defaultModel = availableModels[0]?.value ?? "kie/runway";
   const [selectedModel, setSelectedModel] = useState(
-    typeof data.selectedModel === "string" ? data.selectedModel : "kie/runway"
+    typeof data.selectedModel === "string" ? data.selectedModel : defaultModel
   );
   const [imageConnectionIds, setImageConnectionIds] = useState<string[]>([]);
   const [promptConnectionIds, setPromptConnectionIds] = useState<string[]>([]);
@@ -580,11 +584,11 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   };
 
   // Get current model info
-  const currentModel = VIDEO_MODELS.find((m) => m.value === selectedModel) || VIDEO_MODELS[0];
+  const currentModel =
+    VIDEO_MODELS.find((m) => m.value === selectedModel) || availableModels[0] || VIDEO_MODELS[0];
   const modelSupportsImage = currentModel.supportsImage;
   const modelRequiresImage = currentModel.requiresImage ?? false;
 
-  const canvasHost = useCanvasHost();
   // Estimated credits to charge on Generate (model + duration + resolution).
   const estimatedVideoCost = canvasHost.costPreview({
     kind: "video",
@@ -693,7 +697,7 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
         {/* Model Selector */}
         <div className="flex flex-col gap-1">
           <ModelCombobox
-            options={VIDEO_MODELS}
+            options={availableModels}
             value={selectedModel}
             onValueChange={handleModelChange}
             placeholder="Select model…"

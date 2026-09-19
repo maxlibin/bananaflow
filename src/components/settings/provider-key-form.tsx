@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import type { ProviderId } from "../../lib/provider-api";
+import type { ProviderId } from "../../lib/providers/types";
 import type { SaveKeyResult } from "../../app/settings/actions";
 
 type ProviderKeyFormProps = {

@@ -103,7 +103,31 @@ export const AVAILABLE_MODELS = [
   { value: "kie/gpt-image-2", label: "GPT Image 2" },
   { value: "kie/gpt-image-2-5-flare", label: "GPT Image 2.5 Flare" },
   { value: "kie/gpt-image-2-5-sunburst", label: "GPT Image 2.5 Sunburst" },
+  { value: "openai/gpt-image-1", label: "GPT Image 1" },
+  { value: "openai/gpt-image-1-mini", label: "GPT Image 1 Mini" },
+  { value: "openai/gpt-image-1.5", label: "GPT Image 1.5" },
+  { value: "openai/gpt-image-2", label: "GPT Image 2" },
+  { value: "openai/gpt-image-2.5-flare", label: "GPT Image 2.5 Flare" },
+  { value: "openai/gpt-image-2.5-sunburst", label: "GPT Image 2.5 Sunburst" },
+  { value: "google/gemini-2.5-flash-image", label: "Nano Banana" },
+  { value: "google/gemini-3-pro-image", label: "Nano Banana Pro" },
+  { value: "google/gemini-3.1-flash-image", label: "Nano Banana 2" },
+  { value: "google/gemini-3.1-flash-lite-image", label: "Nano Banana 2 Lite" },
 ];
+
+// Models from providers the host has not enabled are hidden from the picker.
+function modelsForProviders(enabled: readonly string[]) {
+  return AVAILABLE_MODELS.filter((model) => enabled.includes(model.value.split("/")[0]));
+}
+
+const OPENAI_IMAGE_SETTINGS = {
+  aspectRatios: ["1:1", "3:2", "2:3", "auto"],
+  qualities: ["auto", "low", "medium", "high"],
+  outputFormats: ["png", "jpeg", "webp"],
+  variantCounts: [1, 2, 3, 4],
+};
+
+const GEMINI_IMAGE_ASPECT_RATIOS = ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "auto"];
 
 const GPT_IMAGE_2_5_SETTINGS = {
   aspectRatios: [
@@ -159,6 +183,22 @@ const MODEL_SETTING_OPTIONS: Record<
     variantCounts?: number[];
   }
 > = {
+  "openai/gpt-image-1": OPENAI_IMAGE_SETTINGS,
+  "openai/gpt-image-1-mini": OPENAI_IMAGE_SETTINGS,
+  "openai/gpt-image-1.5": OPENAI_IMAGE_SETTINGS,
+  "openai/gpt-image-2": OPENAI_IMAGE_SETTINGS,
+  "openai/gpt-image-2.5-flare": OPENAI_IMAGE_SETTINGS,
+  "openai/gpt-image-2.5-sunburst": OPENAI_IMAGE_SETTINGS,
+  "google/gemini-2.5-flash-image": { aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS },
+  "google/gemini-3-pro-image": {
+    aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS,
+    imageResolutions: ["1K", "2K", "4K"],
+  },
+  "google/gemini-3.1-flash-image": {
+    aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS,
+    imageResolutions: ["1K", "2K", "4K"],
+  },
+  "google/gemini-3.1-flash-lite-image": { aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS },
   "kie/4o-image": {
     aspectRatios: ["1:1", "16:9", "9:16", "3:4", "4:3"],
   },
@@ -328,8 +368,11 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
   const [imageConnectionIds, setImageConnectionIds] = useState<string[]>([]);
   const [promptConnectionIds, setPromptConnectionIds] = useState<string[]>([]);
   const [inputConnectionIds, setInputConnectionIds] = useState<string[]>([]);
+  const canvasHost = useCanvasHost();
+  const availableModels = modelsForProviders(canvasHost.enabledProviders);
+  const defaultModel = availableModels[0]?.value ?? "kie/4o-image";
   const [selectedModel, setSelectedModel] = useState(
-    typeof data.selectedModel === "string" ? data.selectedModel : "kie/4o-image"
+    typeof data.selectedModel === "string" ? data.selectedModel : defaultModel
   );
   const [modelSettings, setModelSettings] = useState<ModelSettings>(() => {
     const savedSettings =
@@ -366,7 +409,6 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
     prompt: "",
   });
 
-  const canvasHost = useCanvasHost();
   // Estimated credits to charge on Generate. The host mirrors the
   // server-side reservation so users see the cost up front.
   const estimatedImageCost = canvasHost.costPreview({
@@ -1224,7 +1266,7 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
               <ModelCombobox
-                options={AVAILABLE_MODELS}
+                options={availableModels}
                 value={selectedModel}
                 onValueChange={handleModelChange}
                 placeholder="Select model…"

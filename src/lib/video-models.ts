@@ -81,9 +81,42 @@ export const VIDEO_MODELS: VideoModelOption[] = [
   { value: "kie/kling-2-5", label: "Kling 2.5", cost: 0.35, supportsImage: true },
   { value: "kie/runway", label: "Runway Gen-3", cost: 0.40, supportsImage: true },
   { value: "kie/veo3", label: "Veo 3", cost: 0.40, supportsImage: true },
+  { value: "google/veo-3.1-generate-preview", label: "Veo 3.1", cost: 0.40, supportsImage: true },
+  { value: "google/veo-3.1-fast-generate-preview", label: "Veo 3.1 Fast", cost: 0.15, supportsImage: true },
+  { value: "google/veo-3.1-lite-generate-preview", label: "Veo 3.1 Lite", cost: 0.10, supportsImage: true },
+  { value: "openai/sora-2", label: "Sora 2", cost: 0.40, supportsImage: true },
+  { value: "openai/sora-2-pro", label: "Sora 2 Pro", cost: 0.80, supportsImage: true },
 ];
 
+// Models from providers the host has not enabled are hidden from the picker.
+export function videoModelsForProviders(enabled: readonly string[]): VideoModelOption[] {
+  return VIDEO_MODELS.filter((model) => enabled.includes(model.value.split("/")[0]));
+}
+
 export const VIDEO_MODEL_SETTING_OPTIONS: Record<string, VideoModelSettingOptions> = {
+  "google/veo-3.1-generate-preview": {
+    durations: ["4", "6", "8"],
+    aspectRatios: ["16:9", "9:16"],
+    resolutions: ["720p", "1080p"],
+  },
+  "google/veo-3.1-fast-generate-preview": {
+    durations: ["4", "6", "8"],
+    aspectRatios: ["16:9", "9:16"],
+    resolutions: ["720p", "1080p"],
+  },
+  "google/veo-3.1-lite-generate-preview": {
+    durations: ["4", "6", "8"],
+    aspectRatios: ["16:9", "9:16"],
+    resolutions: ["720p", "1080p"],
+  },
+  "openai/sora-2": {
+    durations: ["4", "8", "12"],
+    aspectRatios: ["16:9", "9:16"],
+  },
+  "openai/sora-2-pro": {
+    durations: ["4", "8", "12"],
+    aspectRatios: ["16:9", "9:16"],
+  },
   "kie/kling-3-0": {
     durations: ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15"],
     aspectRatios: ["16:9", "9:16", "1:1"],

@@ -6,7 +6,7 @@ import { BULK_MAX_EXPANSION } from "../bulk-limits";
 import { expandWildcards } from "../bulk-wildcards";
 import { denialResponse } from "../host/denial-response";
 import type { HostAdapter } from "../host/types";
-import { IMAGE_MODELS } from "../image-models";
+import { IMAGE_MODELS } from "../model-registry";
 import type { ModelSnapshot } from "../../types/run-history";
 
 type Context = { params: Promise<{ id: string }> };
@@ -44,9 +44,16 @@ export function createBulkGenerateRoute(host: HostAdapter) {
         { status: 400 },
       );
     }
-    if (!(model in IMAGE_MODELS)) {
+    const modelInfo = IMAGE_MODELS[model];
+    if (!modelInfo) {
       return NextResponse.json(
         { success: false, error: `Invalid model: ${model}` },
+        { status: 400 },
+      );
+    }
+    if (!host.providers.enabled.includes(modelInfo.provider)) {
+      return NextResponse.json(
+        { success: false, error: `Provider ${modelInfo.provider} is not enabled on this server` },
         { status: 400 },
       );
     }

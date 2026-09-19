@@ -2,7 +2,7 @@ import type { ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type * as engineSchema from "../../db/schema";
 import type { AdvancedOpId } from "../advanced-ops";
-import type { ProviderId } from "../provider-api";
+import type { ProviderId } from "../providers/types";
 import type { GenerationFeature } from "./features";
 
 export type EngineSchema = typeof engineSchema;
@@ -164,6 +164,11 @@ export type HostAdapter = {
   auth: {
     getUserId(): Promise<string | null>;
   };
+  providers: {
+    // Providers this deployment offers, in preference order. The canvas only
+    // lists models from these providers; advanced ops use the first one.
+    enabled: ProviderId[];
+  };
   keys: {
     // Throws ProviderKeyMissingError when no key is available for the user.
     resolveProviderKey(userId: string, provider: ProviderId): Promise<string>;
@@ -184,6 +189,9 @@ export type HostAdapter = {
   storage: {
     uploadAsset(input: UploadAssetInput): Promise<UploadAssetResult>;
     isAllowedAssetUrl(url: URL): boolean;
+    // Turns a stored asset URL (possibly app-relative) into an absolute URL
+    // this server can fetch, e.g. to send reference images to a provider.
+    resolveAssetUrl(url: string): string;
   };
   callbacks: {
     publicBaseUrl(): string | null;

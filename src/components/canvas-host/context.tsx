@@ -9,6 +9,7 @@ import type * as userPreferences from "../../lib/actions/user-preferences";
 import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
 import type { HostAdapter } from "../../lib/host/types";
+import type { ProviderId } from "../../lib/providers/types";
 import type { TrackFn } from "../../lib/track-events";
 
 // The engine exports action implementations that take the host first. An
@@ -57,6 +58,9 @@ export type LimitNotice = {
 
 export type CanvasHost = {
   actions: CanvasActions;
+  // Providers this deployment can generate with; model pickers only list
+  // models from these providers.
+  enabledProviders: ProviderId[];
   // Returns null when the host has no notion of cost (open-source BYOK build).
   costPreview: (input: CostPreviewInput) => CostPreview | null;
   onLimit: (notice: LimitNotice) => void;

@@ -15,7 +15,7 @@ export type AdvancedOpFeature =
   | "FACE_CONSISTENCY";
 
 export type ProviderResult = {
-  buffer: ArrayBuffer;
+  buffer: Buffer;
   contentType: string;
   ext: string;
 };
@@ -23,7 +23,7 @@ export type ProviderResult = {
 export type ProviderCall = (input: {
   signal: AbortSignal;
   requestId: string;
-  providerSecret: string;
+  userId: string;
 }) => Promise<ProviderResult>;
 
 export interface AdvancedOperationConfig {
@@ -97,28 +97,23 @@ export async function runAdvancedOperation(
       );
     }
 
-    let providerSecret: string;
+    debugLog(`[${op}][start]`, { requestId, userId });
+
+    let result: ProviderResult;
     try {
-      providerSecret = await host.keys.resolveProviderKey(userId, "kie");
+      result = await callProvider({ signal: request.signal, requestId, userId });
     } catch (error) {
       if (!(error instanceof ProviderKeyMissingError)) throw error;
       console.error(`[${op}][config] provider key missing`, {
         requestId,
+        provider: error.provider,
         message: error.message,
       });
       return NextResponse.json(
-        { success: false, error: "Provider not configured" },
+        { success: false, error: error.hint, code: "provider_key_missing" },
         { status: 500 }
       );
     }
-
-    debugLog(`[${op}][start]`, { requestId, userId });
-
-    const result = await callProvider({
-      signal: request.signal,
-      requestId,
-      providerSecret,
-    });
 
     const size = result.buffer.byteLength;
     const previousSize = Number.isFinite(body.previousSize)
@@ -134,7 +129,7 @@ export async function runAdvancedOperation(
     const filename = `${userId}/${fileNameBase}-${Date.now()}.${result.ext}`;
     const blob = await host.storage.uploadAsset({
       key: filename,
-      body: Buffer.from(result.buffer),
+      body: result.buffer,
       contentType: result.contentType,
     });
 

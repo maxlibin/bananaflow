@@ -1,7 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { providerKeys } from "../../db/schema";
 import type { EngineDatabase } from "../host/types";
-import { KIE_API_BASE_URL, type ProviderId } from "../provider-api";
+import { getProvider } from "../providers";
+import type { ProviderId, ProviderKeyCheck } from "../providers/types";
 import { decryptSecret, encryptSecret } from "./crypto";
 
 export type StoredProviderKey = {
@@ -66,35 +67,13 @@ export async function deleteProviderKey(
     .where(and(eq(providerKeys.userId, userId), eq(providerKeys.provider, provider)));
 }
 
-export type ProviderKeyCheck =
-  | { ok: true }
-  // `status` is the provider's own error code when it returns one in the
-  // body (Kie answers HTTP 200 with {code: 401}), otherwise the HTTP status.
-  | { ok: false; status: number; body: string };
+export type { ProviderKeyCheck };
 
-// Calls a cheap authenticated endpoint so the user learns immediately
-// whether a pasted key works. The response body is returned verbatim on
-// failure because Kie's error text is the most useful thing to show.
+// Calls a cheap authenticated endpoint on the provider so the user learns
+// immediately whether a pasted key works.
 export async function checkProviderKey(
   provider: ProviderId,
   plaintext: string,
 ): Promise<ProviderKeyCheck> {
-  const endpoint: Record<ProviderId, string> = {
-    kie: `${KIE_API_BASE_URL}/api/v1/chat/credit`,
-  };
-  const res = await fetch(endpoint[provider], {
-    headers: { Authorization: `Bearer ${plaintext}` },
-  });
-  const body = await res.text();
-  if (!res.ok) return { ok: false, status: res.status, body: body.slice(0, 500) };
-  let parsed: { code?: number; msg?: string };
-  try {
-    parsed = JSON.parse(body) as { code?: number; msg?: string };
-  } catch {
-    return { ok: false, status: res.status, body: body.slice(0, 500) };
-  }
-  if (parsed.code !== undefined && parsed.code !== 200) {
-    return { ok: false, status: parsed.code, body: parsed.msg ?? body.slice(0, 500) };
-  }
-  return { ok: true };
+  return getProvider(provider).checkKey(plaintext);
 }

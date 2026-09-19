@@ -10,6 +10,7 @@ export interface BuildBodyOptions {
   nVariants?: number;
 }
 
+// Kie.ai-specific request/response description for one model.
 export interface ImageModelConfig {
   label: string;
   endpoint: string;
@@ -128,7 +129,7 @@ function normalizeOutputFormat(outputFormat: string | undefined, fallback = "png
   return normalized || fallback;
 }
 
-export const IMAGE_MODELS: Record<string, ImageModelConfig> = {
+export const KIE_IMAGE_MODELS: Record<string, ImageModelConfig> = {
   "kie/4o-image": {
     label: "GPT-Image-1 (4o)",
     endpoint: "/api/v1/gpt4o-image/generate",

@@ -5,15 +5,8 @@ import {
   type ImageJob,
   type MediaSourceValue,
 } from "../db/schema";
-import {
-  IMAGE_MODELS,
-  downloadGeneratedImages,
-  extractGeneratedImageUrls,
-  extractGenerationStatus,
-  getProviderMessage,
-  statusMatchesState,
-  type ImageModelKey,
-} from "./image-generation-service";
+import { materializeAssets } from "./generated-assets";
+import type { GeneratedAsset, TaskStatus } from "./providers/types";
 import { adjustBoardStorage } from "./board-storage";
 import { persistGeneratedMedia } from "./persist-generated-media";
 import type { EngineDatabase, HostAdapter } from "./host/types";
@@ -25,7 +18,7 @@ export type CreateImageJobInput = {
   nodeId?: string | null;
   chatMessageId?: string | null;
   source: MediaSourceValue;
-  model: ImageModelKey;
+  model: string;
   promptSnapshot: string;
   imagesSnapshot: Array<{ imageUrl: string; blobPath?: string }>;
   settingsSnapshot: Record<string, unknown>;
@@ -153,16 +146,6 @@ export async function findStaleImageJobs(
     );
 }
 
-export function mapProviderStatusToJobStatus(
-  model: ImageModelKey,
-  providerStatus: unknown,
-): "completed" | "failed" | "processing" {
-  const cfg = IMAGE_MODELS[model];
-  if (statusMatchesState(providerStatus, cfg.successStates)) return "completed";
-  if (statusMatchesState(providerStatus, cfg.failStates)) return "failed";
-  return "processing";
-}
-
 export async function failImageJob(
   host: HostAdapter,
   job: Pick<ImageJob, "id" | "userId" | "reservedMicro">,
@@ -184,83 +167,59 @@ export type FinalizeImageOutcome =
   | { status: "failed"; error: string }
   | { status: "processing" };
 
-export async function finalizeImageJobFromProviderPayload(
+function outcomeForTerminalJob(job: ImageJob): FinalizeImageOutcome {
+  if (
+    job.status === "completed" &&
+    job.resultBlobUrls?.length &&
+    job.resultMediaIds?.length
+  ) {
+    return {
+      status: "completed",
+      imageUrls: job.resultBlobUrls,
+      mediaIds: job.resultMediaIds,
+    };
+  }
+  if (job.status === "failed") {
+    return { status: "failed", error: job.errorMessage ?? "Failed" };
+  }
+  return { status: "failed", error: "Cancelled" };
+}
+
+// Stores finished assets, persists the media rows and settles the job.
+// Called directly by synchronous providers and via applyImageTaskStatus for
+// asynchronous ones.
+export async function completeImageJob(
   host: HostAdapter,
   job: ImageJob,
-  payload: Record<string, unknown>,
+  assets: GeneratedAsset[],
 ): Promise<FinalizeImageOutcome> {
-  if (
-    job.status === "completed" ||
-    job.status === "failed" ||
-    job.status === "cancelled"
-  ) {
-    if (
-      job.status === "completed" &&
-      job.resultBlobUrls?.length &&
-      job.resultMediaIds?.length
-    ) {
-      return {
-        status: "completed",
-        imageUrls: job.resultBlobUrls,
-        mediaIds: job.resultMediaIds,
-      };
-    }
-    if (job.status === "failed") {
-      return { status: "failed", error: job.errorMessage ?? "Failed" };
-    }
-    return { status: "failed", error: "Cancelled" };
-  }
-
-  const model = job.model as ImageModelKey;
-  const cfg = IMAGE_MODELS[model];
-  const providerStatus = extractGenerationStatus(payload, cfg.statusField);
-  const mapped = mapProviderStatusToJobStatus(model, providerStatus);
-
-  // Webhook payloads sometimes omit the status field; URL presence = success.
-  const providerUrls = extractGeneratedImageUrls(payload, {
-    imageUrlField: cfg.imageUrlField,
-  });
-
-  if (mapped === "failed") {
-    const message = getProviderMessage(payload, "Image generation failed");
+  let materialized;
+  try {
+    materialized = await materializeAssets(assets, new AbortController().signal);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Failed to download generated images";
     await failImageJob(host, job, message);
     return { status: "failed", error: message };
   }
-
-  if (mapped !== "completed" && providerUrls.length === 0) {
-    return { status: "processing" };
-  }
-
-  if (providerUrls.length === 0) {
-    const message = "Provider reported success without image URLs";
-    await failImageJob(host, job, message);
-    return { status: "failed", error: message };
-  }
-
-  // Download all variants, upload to R2, persist media.
-  const downloaded = await downloadGeneratedImages(
-    providerUrls,
-    new AbortController().signal,
-  );
-  if (downloaded.length === 0) {
-    const message = "Failed to download generated images";
+  if (materialized.length === 0) {
+    const message = "Provider returned no images";
     await failImageJob(host, job, message);
     return { status: "failed", error: message };
   }
 
   const uploaded = await Promise.all(
-    downloaded.map(async (img, idx) => {
-      const suffix = downloaded.length > 1 ? `-${idx + 1}` : "";
+    materialized.map(async (img, idx) => {
+      const suffix = materialized.length > 1 ? `-${idx + 1}` : "";
       const key = `${job.userId}/image-${createId()}${suffix}.${img.ext}`;
       const blob = await host.storage.uploadAsset({
         key,
-        body: Buffer.from(img.buffer),
+        body: img.bytes,
         contentType: img.contentType,
       });
       return {
         url: blob.url,
         pathname: blob.pathname,
-        fileSize: img.buffer.byteLength,
+        fileSize: img.bytes.byteLength,
         ext: img.ext,
       };
     }),
@@ -306,7 +265,7 @@ export async function finalizeImageJobFromProviderPayload(
     userId: job.userId,
     jobId: job.id,
     model: job.model,
-    count: downloaded.length,
+    count: materialized.length,
   });
 
   const totalSize = uploaded.reduce((s, u) => s + u.fileSize, 0);
@@ -319,4 +278,22 @@ export async function finalizeImageJobFromProviderPayload(
     imageUrls: uploaded.map((u) => u.url),
     mediaIds: persisted.mediaIds,
   };
+}
+
+// Applies a provider status (from a webhook or a poll) to a job. Idempotent:
+// a job that already reached a terminal state reports it and does nothing.
+export async function applyImageTaskStatus(
+  host: HostAdapter,
+  job: ImageJob,
+  status: TaskStatus,
+): Promise<FinalizeImageOutcome> {
+  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+    return outcomeForTerminalJob(job);
+  }
+  if (status.status === "processing") return { status: "processing" };
+  if (status.status === "failed") {
+    await failImageJob(host, job, status.message);
+    return { status: "failed", error: status.message };
+  }
+  return completeImageJob(host, job, status.assets);
 }

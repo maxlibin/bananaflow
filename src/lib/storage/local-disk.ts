@@ -36,7 +36,8 @@ function resolveInsideRoot(rootDir: string, key: string): string {
 export function createLocalDiskStorage(config: LocalDiskStorageConfig): ObjectStorage {
   const rootDir = path.resolve(config.rootDir);
   const publicPath = config.publicPath.replace(/\/$/, "");
-  const appHost = new URL(config.appOrigin).host;
+  const appOrigin = config.appOrigin.replace(/\/$/, "");
+  const appHost = new URL(appOrigin).host;
 
   return {
     async uploadAsset(input) {
@@ -48,6 +49,9 @@ export function createLocalDiskStorage(config: LocalDiskStorageConfig): ObjectSt
     },
     isAllowedAssetUrl(url) {
       return url.host === appHost && url.pathname.startsWith(`${publicPath}/`);
+    },
+    resolveAssetUrl(url) {
+      return url.startsWith("/") ? `${appOrigin}${url}` : url;
     },
   };
 }

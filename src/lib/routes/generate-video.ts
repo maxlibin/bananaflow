@@ -1,18 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createId } from "@paralleldrive/cuid2";
-import { toProviderAssetUrl } from "../asset-urls";
 import { denialResponse } from "../host/denial-response";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
-import type { ProviderId } from "../provider-api";
-import {
-  VIDEO_MODELS,
-  createProviderTask,
-  type VideoModelConfig,
-  type VideoModelKey,
-} from "../video-generation-service";
+import { VIDEO_MODELS, isVideoModel } from "../model-registry";
+import { getProvider } from "../providers";
+import { buildReferenceImages } from "../reference-images";
 import type { VideoModelSettings } from "../video-models";
 import {
+  completeVideoJob,
   createVideoJob,
   failVideoJob,
   setVideoJobProviderTaskId,
@@ -70,14 +66,20 @@ export function createGenerateVideoRoute(host: HostAdapter) {
     }
 
     const modelKey = body.model ?? "kie/kling-3-0";
-    if (!(modelKey in VIDEO_MODELS)) {
+    if (!isVideoModel(modelKey)) {
       return NextResponse.json(
         { success: false, error: `Invalid model: ${modelKey}` },
         { status: 400 },
       );
     }
-    const model = modelKey as VideoModelKey;
-    const modelConfig: VideoModelConfig = VIDEO_MODELS[model];
+    const model = modelKey;
+    const modelConfig = VIDEO_MODELS[model];
+    if (!host.providers.enabled.includes(modelConfig.provider)) {
+      return NextResponse.json(
+        { success: false, error: `Provider ${modelConfig.provider} is not enabled on this server` },
+        { status: 400 },
+      );
+    }
 
     const settings: Partial<VideoModelSettings> =
       body.settings && typeof body.settings === "object" ? body.settings : {};
@@ -98,10 +100,7 @@ export function createGenerateVideoRoute(host: HostAdapter) {
 
     let providerSecret: string;
     try {
-      providerSecret = await host.keys.resolveProviderKey(
-        userId,
-        modelConfig.provider as ProviderId,
-      );
+      providerSecret = await host.keys.resolveProviderKey(userId, modelConfig.provider);
     } catch (error) {
       if (!(error instanceof ProviderKeyMissingError)) throw error;
       console.error("[generate-video][config] provider key missing", {
@@ -207,14 +206,22 @@ export function createGenerateVideoRoute(host: HostAdapter) {
         ? null
         : `${callbackBase}/api/webhook/kie/video/${job.id}/${nonce}`;
 
-    const created = await createProviderTask({
-      model,
-      prompt,
-      images: supportedImages.map((i) => ({ imageUrl: toProviderAssetUrl(host, i.imageUrl) })),
-      settings,
-      callBackUrl,
-      providerSecret,
-    });
+    let created;
+    try {
+      created = await getProvider(modelConfig.provider).createVideoTask({
+        model,
+        providerModel: modelConfig.providerModel,
+        prompt,
+        referenceImages: buildReferenceImages(host, supportedImages.map((i) => i.imageUrl)),
+        settings,
+        callBackUrl,
+        secret: providerSecret,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Provider request failed";
+      await failVideoJob(host, job, message);
+      return NextResponse.json({ success: false, error: message, jobId: job.id }, { status: 502 });
+    }
 
     if (!created.ok) {
       await failVideoJob(host, job, created.message);
@@ -222,6 +229,17 @@ export function createGenerateVideoRoute(host: HostAdapter) {
         { success: false, error: created.message, jobId: job.id },
         { status: created.status },
       );
+    }
+
+    if (created.mode === "sync") {
+      const outcome = await completeVideoJob(host, job, created.assets);
+      if (outcome.status === "failed") {
+        return NextResponse.json(
+          { success: false, error: outcome.error, jobId: job.id },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ success: true, jobId: job.id, status: "completed" });
     }
 
     await setVideoJobProviderTaskId(host.db, job.id, created.taskId);

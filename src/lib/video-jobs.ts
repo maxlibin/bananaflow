@@ -4,14 +4,8 @@ import {
   videoJobs,
   type VideoJob,
 } from "../db/schema";
-import {
-  VIDEO_MODELS,
-  extractGeneratedVideoUrl,
-  extractGenerationStatus,
-  getProviderMessage,
-  statusMatchesState,
-  type VideoModelKey,
-} from "./video-generation-service";
+import { materializeAssets } from "./generated-assets";
+import type { GeneratedAsset, TaskStatus } from "./providers/types";
 import { adjustBoardStorage } from "./board-storage";
 import { persistGeneratedMedia } from "./persist-generated-media";
 import type { EngineDatabase, HostAdapter } from "./host/types";
@@ -25,7 +19,7 @@ export type CreateVideoJobInput = {
   nodeId?: string | null;
   chatMessageId?: string | null;
   source: MediaSourceValue;
-  model: VideoModelKey;
+  model: string;
   promptSnapshot: string;
   imagesSnapshot: Array<{ imageUrl: string; blobPath?: string }>;
   settingsSnapshot: Partial<VideoModelSettings>;
@@ -156,16 +150,6 @@ export async function findStaleVideoJobs(
     );
 }
 
-export function mapProviderStatusToJobStatus(
-  model: VideoModelKey,
-  providerStatus: unknown,
-): "completed" | "failed" | "processing" {
-  const cfg = VIDEO_MODELS[model];
-  if (statusMatchesState(providerStatus, cfg.successStates)) return "completed";
-  if (statusMatchesState(providerStatus, cfg.failStates)) return "failed";
-  return "processing";
-}
-
 export async function failVideoJob(
   host: HostAdapter,
   job: Pick<VideoJob, "id" | "userId" | "reservedMicro">,
@@ -187,84 +171,42 @@ export type FinalizeOutcome =
   | { status: "failed"; error: string }
   | { status: "processing" };
 
-export async function finalizeVideoJobFromProviderPayload(
+function outcomeForTerminalJob(job: VideoJob): FinalizeOutcome {
+  if (job.status === "completed" && job.resultBlobUrl && job.resultMediaId) {
+    return { status: "completed", videoUrl: job.resultBlobUrl, mediaId: job.resultMediaId };
+  }
+  if (job.status === "failed") {
+    return { status: "failed", error: job.errorMessage ?? "Failed" };
+  }
+  return { status: "failed", error: "Cancelled" };
+}
+
+export async function completeVideoJob(
   host: HostAdapter,
   job: VideoJob,
-  payload: Record<string, unknown>,
+  assets: GeneratedAsset[],
 ): Promise<FinalizeOutcome> {
-  if (
-    job.status === "completed" ||
-    job.status === "failed" ||
-    job.status === "cancelled"
-  ) {
-    if (job.status === "completed" && job.resultBlobUrl && job.resultMediaId) {
-      return {
-        status: "completed",
-        videoUrl: job.resultBlobUrl,
-        mediaId: job.resultMediaId,
-      };
-    }
-    if (job.status === "failed") {
-      return { status: "failed", error: job.errorMessage ?? "Failed" };
-    }
-    return { status: "failed", error: "Cancelled" };
-  }
-
-  const model = job.model as VideoModelKey;
-  const cfg = VIDEO_MODELS[model];
-  const providerStatus = extractGenerationStatus(payload, cfg.statusField);
-  const mapped = mapProviderStatusToJobStatus(model, providerStatus);
-
-  // Kie sends two payload shapes:
-  //  - Polling response: { data: { state: "success", url: ... } }   (state field present)
-  //  - Webhook callback: { code: 200, data: { video_url: ... }, msg: "..." } (no state, just URL)
-  // For the webhook shape, the presence of a video URL with no explicit fail
-  // state is the success signal. So we extract the URL first; if we have one,
-  // treat as completed unless the provider explicitly flagged a fail state.
-  const providerUrl = extractGeneratedVideoUrl(payload, cfg.videoUrlField);
-
-  if (mapped === "failed") {
-    const message = getProviderMessage(payload, "Video generation failed");
-    await failVideoJob(host, job, message);
-    return { status: "failed", error: message };
-  }
-
-  if (mapped !== "completed" && !providerUrl) {
-    return { status: "processing" };
-  }
-
-  if (!providerUrl) {
-    const message = "Provider reported success without a video URL";
-    await failVideoJob(host, job, message);
-    return { status: "failed", error: message };
-  }
-
-  // Download the asset from Kie's temp storage and upload to Vercel Blob.
-  let upstream: Response;
+  let materialized;
   try {
-    upstream = await fetch(providerUrl);
-  } catch (err) {
-    const message =
-      err instanceof Error
-        ? `Asset fetch failed: ${err.message}`
-        : "Asset fetch failed";
+    materialized = await materializeAssets(assets.slice(0, 1), new AbortController().signal);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Asset fetch failed";
     await failVideoJob(host, job, message);
     return { status: "failed", error: message };
   }
-  if (!upstream.ok) {
-    const message = `Asset fetch HTTP ${upstream.status}`;
+  const video = materialized[0];
+  if (!video) {
+    const message = "Provider returned no video";
     await failVideoJob(host, job, message);
     return { status: "failed", error: message };
   }
 
-  const arrayBuffer = await upstream.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const fileName = `video-${createId()}.mp4`;
+  const fileName = `video-${createId()}.${video.ext}`;
   const blobKey = `boards/${job.boardId}/${fileName}`;
   const blob = await host.storage.uploadAsset({
     key: blobKey,
-    body: buffer,
-    contentType: "video/mp4",
+    body: video.bytes,
+    contentType: video.contentType,
   });
 
   const persisted = await persistGeneratedMedia(host.db, {
@@ -292,7 +234,7 @@ export async function finalizeVideoJobFromProviderPayload(
         url: blob.url,
         blobPath: blob.pathname,
         fileName,
-        fileSize: buffer.length,
+        fileSize: video.bytes.length,
       },
     ],
   });
@@ -315,12 +257,23 @@ export async function finalizeVideoJobFromProviderPayload(
   // Storage delta: subtract previous if replacing, add the new size.
   const previousDelta =
     job.previousBlobPath && job.previousSize ? -job.previousSize : 0;
-  await adjustBoardStorage(
-    host.db,
-    job.userId,
-    job.boardId,
-    previousDelta + buffer.length,
-  );
+  await adjustBoardStorage(host.db, job.userId, job.boardId, previousDelta + video.bytes.length);
 
   return { status: "completed", videoUrl: blob.url, mediaId };
+}
+
+export async function applyVideoTaskStatus(
+  host: HostAdapter,
+  job: VideoJob,
+  status: TaskStatus,
+): Promise<FinalizeOutcome> {
+  if (job.status === "completed" || job.status === "failed" || job.status === "cancelled") {
+    return outcomeForTerminalJob(job);
+  }
+  if (status.status === "processing") return { status: "processing" };
+  if (status.status === "failed") {
+    await failVideoJob(host, job, status.message);
+    return { status: "failed", error: status.message };
+  }
+  return completeVideoJob(host, job, status.assets);
 }

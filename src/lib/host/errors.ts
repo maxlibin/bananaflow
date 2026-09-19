@@ -1,4 +1,4 @@
-import type { ProviderId } from "../provider-api";
+import type { ProviderId } from "../providers/types";
 
 export class ProviderKeyMissingError extends Error {
   readonly provider: ProviderId;

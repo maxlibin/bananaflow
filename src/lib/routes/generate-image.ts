@@ -1,19 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createId } from "@paralleldrive/cuid2";
-import { toProviderAssetUrl } from "../asset-urls";
 import { denialResponse } from "../host/denial-response";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
 import {
-  IMAGE_MODELS,
-  createImageProviderTask,
-  type ImageModelKey,
-} from "../image-generation-service";
-import {
+  completeImageJob,
   createImageJob,
   failImageJob,
   setImageJobProviderTaskId,
 } from "../image-jobs";
+import { IMAGE_MODELS, isImageModel } from "../model-registry";
+import { getProvider } from "../providers";
+import { buildReferenceImages } from "../reference-images";
 
 export function createGenerateImageRoute(host: HostAdapter) {
   async function POST(request: NextRequest) {
@@ -68,13 +66,20 @@ export function createGenerateImageRoute(host: HostAdapter) {
     }
 
     const modelKey = body.model ?? "kie/4o-image";
-    if (!(modelKey in IMAGE_MODELS)) {
+    if (!isImageModel(modelKey)) {
       return NextResponse.json(
         { success: false, error: `Invalid model: ${modelKey}` },
         { status: 400 },
       );
     }
-    const model = modelKey as ImageModelKey;
+    const model = modelKey;
+    const modelInfo = IMAGE_MODELS[model];
+    if (!host.providers.enabled.includes(modelInfo.provider)) {
+      return NextResponse.json(
+        { success: false, error: `Provider ${modelInfo.provider} is not enabled on this server` },
+        { status: 400 },
+      );
+    }
 
     const settings: Record<string, unknown> =
       body.settings && typeof body.settings === "object" ? body.settings : {};
@@ -83,9 +88,9 @@ export function createGenerateImageRoute(host: HostAdapter) {
     // (e.g. kie/4o-image — Kie echoes back nVariants=1 regardless of input).
     // Without this, a programmatic caller passing variants=4 would be
     // charged 4× while only receiving 1 image.
-    const modelCfg = IMAGE_MODELS[model];
-    const variants =
-      modelCfg.supportsBatchGeneration === false ? 1 : requestedVariants;
+    const variants = modelInfo.supportsBatchGeneration
+      ? Math.min(requestedVariants, modelInfo.maxBatchCount)
+      : 1;
     const images = (body.images ?? []).filter(
       (i): i is { imageUrl: string; blobPath?: string } =>
         Boolean(i && typeof i.imageUrl === "string" && i.imageUrl.length > 0),
@@ -93,7 +98,7 @@ export function createGenerateImageRoute(host: HostAdapter) {
 
     let providerSecret: string;
     try {
-      providerSecret = await host.keys.resolveProviderKey(userId, "kie");
+      providerSecret = await host.keys.resolveProviderKey(userId, modelInfo.provider);
     } catch (error) {
       if (!(error instanceof ProviderKeyMissingError)) throw error;
       console.error("[generate-image][config] provider key missing", {
@@ -188,14 +193,28 @@ export function createGenerateImageRoute(host: HostAdapter) {
         ? null
         : `${callbackBase}/api/webhook/kie/image/${job.id}/${nonce}`;
 
-    const created = await createImageProviderTask({
-      model,
-      prompt,
-      imageUrls: images.map((i) => toProviderAssetUrl(host, i.imageUrl)),
-      settings,
-      callBackUrl,
-      providerSecret,
-    });
+    const referenceImages = modelInfo.supportsImageInput
+      ? buildReferenceImages(host, images.map((i) => i.imageUrl))
+      : [];
+
+    let created;
+    try {
+      created = await getProvider(modelInfo.provider).createImageTask({
+        model,
+        providerModel: modelInfo.providerModel,
+        prompt,
+        referenceImages,
+        settings,
+        variants,
+        callBackUrl,
+        secret: providerSecret,
+        signal: request.signal,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Provider request failed";
+      await failImageJob(host, job, message);
+      return NextResponse.json({ success: false, error: message, jobId: job.id }, { status: 502 });
+    }
 
     if (!created.ok) {
       await failImageJob(host, job, created.message);
@@ -203,6 +222,17 @@ export function createGenerateImageRoute(host: HostAdapter) {
         { success: false, error: created.message, jobId: job.id },
         { status: created.status },
       );
+    }
+
+    if (created.mode === "sync") {
+      const outcome = await completeImageJob(host, job, created.assets);
+      if (outcome.status === "failed") {
+        return NextResponse.json(
+          { success: false, error: outcome.error, jobId: job.id },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ success: true, jobId: job.id, status: "completed" });
     }
 
     await setImageJobProviderTaskId(host.db, job.id, created.taskId);

@@ -10,7 +10,7 @@ import {
   saveProviderKey,
   type StoredProviderKey,
 } from "../../lib/keys/provider-keys";
-import type { ProviderId } from "../../lib/provider-api";
+import type { ProviderId } from "../../lib/providers/types";
 
 export type SaveKeyResult =
   | { success: true }

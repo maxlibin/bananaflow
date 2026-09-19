@@ -1,4 +1,4 @@
-import { IMAGE_MODELS, type ImageModelConfig } from "./image-models";
+import { KIE_IMAGE_MODELS, type ImageModelConfig } from "./image-models";
 import {
   findAllUrls,
   findFirstUrl,
@@ -7,8 +7,8 @@ import {
 } from "./generation-utils";
 import { buildProviderUrl } from "./provider-api";
 
-export { IMAGE_MODELS };
-export type ImageModelKey = keyof typeof IMAGE_MODELS;
+export { KIE_IMAGE_MODELS };
+export type KieImageModelKey = keyof typeof KIE_IMAGE_MODELS;
 
 export function normalizeStateValue(value: unknown): string {
   if (typeof value === "number") return String(value);
@@ -214,7 +214,7 @@ export async function downloadGeneratedImages(
 }
 
 export interface CreateImageProviderTaskInput {
-  model: ImageModelKey;
+  model: KieImageModelKey;
   prompt: string;
   imageUrls: string[];
   settings: Record<string, unknown>;
@@ -229,7 +229,7 @@ export async function createImageProviderTask(
   | { ok: true; taskId: string }
   | { ok: false; status: number; message: string }
 > {
-  const config = IMAGE_MODELS[input.model];
+  const config = KIE_IMAGE_MODELS[input.model];
   const settings = input.settings as Record<string, string | undefined>;
   const body = config.buildBody(input.prompt, {
     aspectRatio: typeof settings.aspectRatio === "string" ? settings.aspectRatio : undefined,
@@ -283,14 +283,14 @@ export async function createImageProviderTask(
 }
 
 export async function fetchImageProviderTaskStatus(
-  model: ImageModelKey,
+  model: KieImageModelKey,
   taskId: string,
   providerSecret: string,
 ): Promise<
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; status: number; message: string }
 > {
-  const config = IMAGE_MODELS[model];
+  const config = KIE_IMAGE_MODELS[model];
   const url = `${buildProviderUrl(config.statusEndpoint)}?taskId=${encodeURIComponent(taskId)}`;
   let res: Response;
   try {

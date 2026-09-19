@@ -1,80 +1,61 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { runAdvancedOperation, type ProviderResult } from "../advanced-node-pipeline";
-import { toProviderAssetUrl } from "../asset-urls";
 import type { AdvancedOpId } from "../advanced-ops";
-import { waitWithAbort } from "../generation-utils";
 import type { HostAdapter } from "../host/types";
-import {
-  downloadGeneratedImages,
-  extractGeneratedImageUrls,
-  resolveImageTaskId,
-} from "../image-generation-service";
-import { IMAGE_MODELS, type ImageModelConfig } from "../image-models";
-import { buildProviderUrl } from "../provider-api";
+import { EDIT_MODEL_BY_PROVIDER, IMAGE_MODELS } from "../model-registry";
+import { getProvider } from "../providers";
+import { buildReferenceImages } from "../reference-images";
+import { runImageTaskToCompletion } from "../run-image-task";
 
-// All three advanced ops are prompt-engineered calls to the same editing
-// model, polled inline for up to five minutes.
-const ADVANCED_OP_MODEL = "kie/nano-banana-pro";
-const POLL_ATTEMPTS = 60;
-const POLL_INTERVAL_MS = 5000;
+// Upscale, background removal and face consistency are prompt-engineered
+// calls to an editing-capable image model. The model comes from the first
+// provider the host enables, so the same node works on every deployment.
 
-type BuildBodyOptions = Parameters<ImageModelConfig["buildBody"]>[1];
-
-async function runEditingModel(input: {
-  prompt: string;
-  bodyOptions: BuildBodyOptions;
-  signal: AbortSignal;
-  providerSecret: string;
-  timeoutMessage: string;
-}): Promise<ProviderResult> {
-  const modelConfig = IMAGE_MODELS[ADVANCED_OP_MODEL];
-  if (!modelConfig) throw new Error(`Model ${ADVANCED_OP_MODEL} not registered`);
-
-  const requestBody = modelConfig.buildBody(input.prompt, input.bodyOptions);
-
-  const createRes = await fetch(buildProviderUrl(modelConfig.endpoint), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${input.providerSecret}`,
-    },
-    signal: input.signal,
-    body: JSON.stringify(requestBody),
-  });
-  const createJson = (await createRes.json()) as Record<string, unknown>;
-  if (!createRes.ok) throw new Error(`Provider create failed: ${createRes.status}`);
-
-  const taskId = resolveImageTaskId(createJson, modelConfig.taskIdField);
-  if (!taskId) throw new Error("Provider did not return a task id");
-
-  let urls: string[] = [];
-  for (let i = 0; i < POLL_ATTEMPTS; i++) {
-    if (input.signal.aborted) throw new Error("aborted");
-    await waitWithAbort(POLL_INTERVAL_MS, input.signal);
-    const statusRes = await fetch(
-      `${buildProviderUrl(modelConfig.statusEndpoint)}?taskId=${taskId}`,
-      { headers: { Authorization: `Bearer ${input.providerSecret}` }, signal: input.signal },
-    );
-    if (!statusRes.ok) continue;
-    const statusJson = (await statusRes.json()) as Record<string, unknown>;
-    const data = (statusJson.data ?? statusJson) as Record<string, unknown>;
-    const status =
-      data[modelConfig.statusField] ?? data.status ?? data.successFlag ?? data.taskStatus;
-    if (status !== undefined && modelConfig.successStates.includes(status as never)) {
-      urls = extractGeneratedImageUrls(statusJson, modelConfig);
-      if (urls.length > 0) break;
-    }
-    if (status !== undefined && modelConfig.failStates.includes(status as never)) {
-      throw new Error("Provider reported failure");
-    }
+export class NoEditingProviderError extends Error {
+  constructor() {
+    super("No enabled provider offers an editing model");
+    this.name = "NoEditingProviderError";
   }
+}
 
-  if (urls.length === 0) throw new Error(input.timeoutMessage);
+function pickEditingModel(host: HostAdapter): string {
+  const provider = host.providers.enabled[0];
+  if (!provider) throw new NoEditingProviderError();
+  return EDIT_MODEL_BY_PROVIDER[provider];
+}
 
-  const downloaded = await downloadGeneratedImages(urls, input.signal);
-  if (downloaded.length === 0) throw new Error("Failed to download result");
-  const first = downloaded[0];
-  return { buffer: first.buffer, contentType: first.contentType, ext: first.ext };
+async function runEditingModel(
+  host: HostAdapter,
+  input: {
+    userId: string;
+    prompt: string;
+    referenceUrls: string[];
+    settings: Record<string, unknown>;
+    signal: AbortSignal;
+  },
+): Promise<ProviderResult> {
+  const model = pickEditingModel(host);
+  const info = IMAGE_MODELS[model];
+  const secret = await host.keys.resolveProviderKey(input.userId, info.provider);
+  const assets = await runImageTaskToCompletion({
+    provider: getProvider(info.provider),
+    task: {
+      model,
+      providerModel: info.providerModel,
+      prompt: input.prompt,
+      referenceImages: buildReferenceImages(host, input.referenceUrls),
+      settings: input.settings,
+      variants: 1,
+      callBackUrl: null,
+      secret,
+      signal: input.signal,
+    },
+    pollIntervalMs: 5000,
+    maxPolls: 60,
+  });
+  const first = assets[0];
+  if (!first) throw new Error("Provider returned no image");
+  return { buffer: first.bytes, contentType: first.contentType, ext: first.ext };
 }
 
 export function createUpscaleRoute(host: HostAdapter) {
@@ -94,13 +75,13 @@ export function createUpscaleRoute(host: HostAdapter) {
       feature: "IMAGE_UPSCALE",
       fileNameBase: `upscaled-${factor}x`,
       extraUsageMetadata: { factor, sourceUrl: imageUrl.slice(0, 200) },
-      callProvider: ({ signal, providerSecret }) =>
-        runEditingModel({
+      callProvider: ({ signal, userId }) =>
+        runEditingModel(host, {
+          userId,
           prompt: `Upscale this image to ${factor}x resolution. Preserve all details, sharpness, and colors. Do not change composition.`,
-          bodyOptions: { imageUrls: [toProviderAssetUrl(host, imageUrl)], nVariants: 1 },
+          referenceUrls: [imageUrl],
+          settings: { aspectRatio: "auto" },
           signal,
-          providerSecret,
-          timeoutMessage: "Upscale timed out",
         }),
     });
   }
@@ -122,14 +103,14 @@ export function createRemoveBgRoute(host: HostAdapter) {
       feature: "BACKGROUND_REMOVAL",
       fileNameBase: "removed-bg",
       extraUsageMetadata: { sourceUrl: imageUrl.slice(0, 200) },
-      callProvider: ({ signal, providerSecret }) =>
-        runEditingModel({
+      callProvider: ({ signal, userId }) =>
+        runEditingModel(host, {
+          userId,
           prompt:
             "Remove the background of this image completely. Output a transparent PNG with only the main subject, cleanly cut out along the edges.",
-          bodyOptions: { imageUrls: [toProviderAssetUrl(host, imageUrl)], outputFormat: "png", nVariants: 1 },
+          referenceUrls: [imageUrl],
+          settings: { aspectRatio: "auto", outputFormat: "png" },
           signal,
-          providerSecret,
-          timeoutMessage: "Background removal timed out",
         }),
     });
   }
@@ -156,7 +137,7 @@ export function createFaceConsistencyRoute(host: HostAdapter) {
     }
     const prompt = body.prompt;
     const referenceImageUrl = body.referenceImageUrl;
-    const aspectRatio = body.aspectRatio;
+    const aspectRatio = body.aspectRatio ?? "auto";
 
     return runAdvancedOperation(host, {
       request,
@@ -164,13 +145,13 @@ export function createFaceConsistencyRoute(host: HostAdapter) {
       feature: "FACE_CONSISTENCY",
       fileNameBase: "face-consistent",
       extraUsageMetadata: { referenceUrl: referenceImageUrl.slice(0, 200) },
-      callProvider: ({ signal, providerSecret }) =>
-        runEditingModel({
+      callProvider: ({ signal, userId }) =>
+        runEditingModel(host, {
+          userId,
           prompt: `Keep the same face, identity, and distinguishing features as the reference image. Scene: ${prompt}`,
-          bodyOptions: { imageUrls: [toProviderAssetUrl(host, referenceImageUrl)], aspectRatio, nVariants: 1 },
+          referenceUrls: [referenceImageUrl],
+          settings: { aspectRatio },
           signal,
-          providerSecret,
-          timeoutMessage: "Face consistency timed out",
         }),
     });
   }

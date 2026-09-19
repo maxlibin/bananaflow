@@ -33,7 +33,7 @@ export type VideoModelConfig = {
   maxPolls?: number;
 };
 
-export const VIDEO_MODELS = {
+export const KIE_VIDEO_MODELS = {
   "kie/runway": {
     label: "Runway Gen-3",
     endpoint: "/api/v1/runway/generate",
@@ -317,7 +317,7 @@ export const VIDEO_MODELS = {
   },
 } as const satisfies Record<string, VideoModelConfig>;
 
-export type VideoModelKey = keyof typeof VIDEO_MODELS;
+export type KieVideoModelKey = keyof typeof KIE_VIDEO_MODELS;
 
 export function normalizeStateValue(value: unknown): string {
   if (typeof value === "number") return String(value);
@@ -840,7 +840,7 @@ export function extractGeneratedVideoUrl(
 }
 
 export interface CreateProviderTaskInput {
-  model: VideoModelKey;
+  model: KieVideoModelKey;
   prompt: string;
   images: Array<{ imageUrl: string }>;
   settings: Partial<VideoModelSettings>;
@@ -855,7 +855,7 @@ export async function createProviderTask(
   | { ok: true; taskId: string }
   | { ok: false; status: number; message: string }
 > {
-  const config = VIDEO_MODELS[input.model];
+  const config = KIE_VIDEO_MODELS[input.model];
   const body = buildVideoRequestBody({
     model: input.model,
     prompt: input.prompt,
@@ -908,14 +908,14 @@ export async function createProviderTask(
 }
 
 export async function fetchProviderTaskStatus(
-  model: VideoModelKey,
+  model: KieVideoModelKey,
   taskId: string,
   providerSecret: string,
 ): Promise<
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; status: number; message: string }
 > {
-  const config = VIDEO_MODELS[model];
+  const config = KIE_VIDEO_MODELS[model];
   const url = `${KIE_API_BASE_URL}${config.statusEndpoint}?taskId=${encodeURIComponent(taskId)}`;
   let res: Response;
   try {

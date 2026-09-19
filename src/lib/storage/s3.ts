@@ -45,5 +45,8 @@ export function createS3Storage(config: S3StorageConfig): ObjectStorage {
     isAllowedAssetUrl(url) {
       return url.hostname === publicHost;
     },
+    resolveAssetUrl(url) {
+      return url;
+    },
   };
 }

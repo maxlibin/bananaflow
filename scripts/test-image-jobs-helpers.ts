@@ -1,25 +1,31 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { mapProviderStatusToJobStatus } from "../src/lib/image-jobs.ts";
+import { imageStatusFromPayload } from "../src/lib/providers/kie.ts";
 
-test("nano-banana-2 success state maps to completed", () => {
-  assert.equal(
-    mapProviderStatusToJobStatus("kie/nano-banana-2", "success"),
-    "completed",
-  );
+test("Kie 4o-image successFlag=1 with URLs maps to completed", () => {
+  const status = imageStatusFromPayload("kie/4o-image", {
+    data: { successFlag: 1, result_urls: ["https://cdn.example/a.png"] },
+  });
+  assert.equal(status.status, "completed");
+  if (status.status === "completed") {
+    assert.deepEqual(status.assets, [{ kind: "url", url: "https://cdn.example/a.png" }]);
+  }
 });
 
-test("4o-image successFlag=1 maps to completed", () => {
-  assert.equal(mapProviderStatusToJobStatus("kie/4o-image", 1), "completed");
+test("Kie nano-banana-2 success without URLs is a failure, not processing", () => {
+  const status = imageStatusFromPayload("kie/nano-banana-2", { data: { state: "success" } });
+  assert.equal(status.status, "failed");
 });
 
-test("fail states map to failed", () => {
-  assert.equal(mapProviderStatusToJobStatus("kie/nano-banana-2", "fail"), "failed");
-  assert.equal(mapProviderStatusToJobStatus("kie/4o-image", 2), "failed");
+test("Kie fail states map to failed with the provider message", () => {
+  const status = imageStatusFromPayload("kie/4o-image", {
+    data: { successFlag: 2, errorMessage: "content policy" },
+  });
+  assert.equal(status.status, "failed");
 });
 
-test("unknown / in-flight states map to processing", () => {
-  assert.equal(mapProviderStatusToJobStatus("kie/4o-image", undefined), "processing");
-  assert.equal(mapProviderStatusToJobStatus("kie/4o-image", "queued"), "processing");
+test("Kie in-flight states map to processing", () => {
+  assert.equal(imageStatusFromPayload("kie/4o-image", { data: { successFlag: 0 } }).status, "processing");
+  assert.equal(imageStatusFromPayload("kie/nano-banana-2", { data: { state: "queued" } }).status, "processing");
 });

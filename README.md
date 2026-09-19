@@ -4,12 +4,12 @@
 
 Open-source visual canvas for AI image and video generation. Wire prompts, reference images and generation nodes on a board, run them against your own provider key, and keep every result in a local library.
 
-Banana Flow is the engine behind [aibananaflow.com](https://aibananaflow.com). This repository is the self-hostable core: the canvas, the generation pipeline, the run history and the media library. Bring your own [Kie.ai](https://kie.ai) key and you pay the provider directly, with no credits or plans in between.
+Banana Flow is the engine behind [aibananaflow.com](https://aibananaflow.com). This repository is the self-hostable core: the canvas, the generation pipeline, the run history and the media library. Bring your own OpenAI and Google AI Studio keys; the app calls those providers directly and you pay them, with no credits or plans in between.
 
 ## Features
 
 - Node canvas built on React Flow: input nodes (prompt + reference images), image output, video output, seed-frame extraction, upscale, background removal, face consistency.
-- 17 image models and 17 video models through Kie.ai (GPT Image, Nano Banana, Flux, Imagen, Seedream, Kling, Veo, Sora, Seedance and more).
+- Direct provider access with your own keys: GPT Image 1, 1.5, 2 and 2.5 and Sora 2 from OpenAI; Nano Banana, Nano Banana Pro, Nano Banana 2 and Veo 3.1 from Google AI Studio.
 - Bulk runs with `{a|b|c}` wildcard prompts, run history with re-run and variations, pinned results, a media library, multi-board tabs.
 - Filerobot image editor for cropping, annotating and adjusting inputs before generation.
 - Local-disk storage by default, any S3-compatible bucket optionally.
@@ -30,7 +30,7 @@ yarn db:migrate
 yarn dev
 ```
 
-Open <http://localhost:3000>, go to **Settings**, paste your Kie.ai API key and press **Test key**, then **Save**. Create a board from the dashboard and generate.
+Open <http://localhost:3000>, go to **Settings**, paste a Google AI Studio key and/or an OpenAI key, press **Test key**, then **Save**. Create a board from the dashboard and generate.
 
 ## Configuration
 
@@ -41,26 +41,23 @@ All settings are environment variables. `.env.example` documents every one; the 
 | `DATABASE_URL` | Postgres connection string. |
 | `APP_ORIGIN` | The origin users reach the app on. Local-disk storage builds asset URLs from it. |
 | `APP_SECRET` | Encrypts provider keys at rest (AES-256-GCM). Rotating it invalidates saved keys. |
-| `KIE_SECRET` | Optional server-wide Kie.ai key, used when no key is saved in Settings. |
+| `GOOGLE_API_KEY`, `OPENAI_API_KEY` | Optional server-wide provider keys, used when no key is saved in Settings. |
 | `ENABLE_INPROCESS_SCHEDULER` | `true` runs the job pollers and bulk queue inside the server. Set `false` to drive `/api/cron/*` from an external scheduler with `CRON_SECRET`. |
-| `PUBLIC_BASE_URL` | Optional public origin for provider webhooks. Without it the scheduler polls the provider, which is fine for most deployments. |
+| `PUBLIC_BASE_URL` | Optional public origin, only relevant for providers that deliver results by webhook. Leave it empty; the scheduler polls OpenAI and Google. |
 | `S3_*` | Optional S3-compatible storage (Cloudflare R2, AWS S3, MinIO). Leave unset for local disk under `./data/uploads`. |
 
-## Reference images and the provider
+## Reference images
 
-Text-to-image and text-to-video work anywhere. Anything that sends one of your images to the provider (image-to-image, upscale, background removal, face consistency, video from a frame) needs the provider to download that image from a URL it can reach. With local-disk storage on `localhost` it cannot, so either:
-
-- set `PUBLIC_BASE_URL` to a tunnel or public origin for this app (uploads are then sent as `PUBLIC_BASE_URL/uploads/...`), or
-- use S3-compatible storage with a public bucket URL.
+Image-to-image, upscale, background removal, face consistency and image-to-video send your reference image to the provider as bytes, so they work with local-disk storage on plain `localhost`. No public origin or tunnel is needed.
 
 ## How it works
 
 - `src/components/flow` is the canvas; `src/stores/board-store.tsx` holds a board's graph and drives generation.
-- `src/lib` is the engine: model registries, provider calls, job tables, finalizers, route-handler factories and the scheduler.
+- `src/lib` is the engine: the model registry (`model-registry.ts`), one adapter per provider under `src/lib/providers/` (OpenAI, Google, and Kie.ai for the hosted product), job tables, finalizers, route-handler factories and the scheduler.
 - `src/lib/host/types.ts` defines the **host adapter**: auth, provider keys, generation policy, limits, storage, callbacks and the database. `src/host` is the single-user local implementation used by this app. A hosted product plugs in its own (accounts, billing, rate limits) without forking the canvas.
 - `src/components/canvas-host/context.tsx` is the client-side counterpart: server actions, cost previews, limit notices and analytics reach the canvas through one React context.
 
-Generation runs in two phases: the API route validates, reserves through the host policy, and enqueues a provider task; a webhook or the poller finalizes the job, downloads the asset into storage and records the media row. See `CLAUDE.md` for the full map.
+Generation runs through a provider adapter: the API route validates, reserves through the host policy and starts the task. Synchronous providers (OpenAI and Gemini images) return the result in the same request; long-running ones (Veo, Sora) are polled by the scheduler. The finalizer stores the asset and records the media row. See `CLAUDE.md` for the full map.
 
 ## Using Banana Flow as a dependency
 

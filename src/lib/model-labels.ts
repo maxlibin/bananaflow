@@ -6,14 +6,12 @@
 // History panel / Bulk run captions leaks our routing decisions to users.
 // This helper hides them.
 
-import { IMAGE_MODELS } from "./image-models";
-import { VIDEO_MODELS as VIDEO_MODEL_CONFIGS } from "./video-generation-service";
+import { IMAGE_MODELS, VIDEO_MODELS } from "./model-registry";
 
 export function getModelLabel(key: string | null | undefined): string {
   if (!key) return "—";
 
-  const videoCfg =
-    (VIDEO_MODEL_CONFIGS as Record<string, { label?: string }>)[key];
+  const videoCfg = VIDEO_MODELS[key];
   if (videoCfg?.label) return videoCfg.label;
 
   const imageCfg = IMAGE_MODELS[key];

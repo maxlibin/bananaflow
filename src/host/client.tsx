@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { CanvasHostProvider, type CanvasHost } from "../components/canvas-host/context";
 import { notifyDialog } from "../components/ui/dialog-host";
+import { LOCAL_ENABLED_PROVIDERS } from "./local/providers";
 import {
   createBoard,
   deleteBoard,
@@ -18,6 +19,7 @@ import {
 } from "./actions";
 
 const localCanvasHost: CanvasHost = {
+  enabledProviders: LOCAL_ENABLED_PROVIDERS,
   actions: {
     createBoard,
     updateBoard,

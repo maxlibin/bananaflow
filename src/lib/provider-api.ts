@@ -1,8 +1,6 @@
-// Provider base URL registry. Each video/image model declares its
-// `provider` tag in its config. Secrets are resolved by the host adapter
+// Kie.ai base URL. Secrets are resolved by the host adapter
 // (`HostAdapter.keys.resolveProviderKey`), never read from env here.
-
-export type ProviderId = "kie";
+export type { ProviderId } from "./providers/types";
 
 export const KIE_API_BASE_URL = "https://api.kie.ai";
 
