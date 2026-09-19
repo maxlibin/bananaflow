@@ -1,5 +1,7 @@
 # Banana Flow
 
+![Banana Flow canvas: an input node wired to an image output node, with the media library open](docs/canvas-preview.png)
+
 Open-source visual canvas for AI image and video generation. Wire prompts, reference images and generation nodes on a board, run them against your own provider key, and keep every result in a local library.
 
 Banana Flow is the engine behind [aibananaflow.com](https://aibananaflow.com). This repository is the self-hostable core: the canvas, the generation pipeline, the run history and the media library. Bring your own [Kie.ai](https://kie.ai) key and you pay the provider directly, with no credits or plans in between.
