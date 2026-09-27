@@ -10,6 +10,7 @@ import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
 import type { HostAdapter } from "../../lib/host/types";
 import type { CanvasModels } from "../../lib/model-options";
+import type { ScriptAssistant } from "../../lib/script/assistant";
 import type { TrackFn } from "../../lib/track-events";
 
 // The engine exports action implementations that take the host first. An
@@ -68,6 +69,8 @@ export type CanvasHost = {
   // refresh balances or analytics.
   onGenerationSettled: () => void;
   track: TrackFn;
+  // AI writing help for Script nodes; null when the host has no LLM.
+  scriptAssistant: ScriptAssistant | null;
 };
 
 const CanvasHostContext = createContext<CanvasHost | null>(null);

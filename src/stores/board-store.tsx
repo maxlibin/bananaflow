@@ -16,6 +16,10 @@ import { useStore } from "zustand";
 import { createId } from "@paralleldrive/cuid2";
 
 import type { VideoModelSettings } from "../lib/video-models";
+import type { ShotPlan } from "../lib/script/assistant";
+import { applyShotPlans } from "../lib/script/shot-graph";
+import { buildStructureSkeleton } from "../lib/script/structures";
+import type { ScriptNodeData } from "../lib/script/types";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -35,7 +39,11 @@ const EDGE_COLORS: Record<BoardNodeType, string> = {
   upscaleNode: "#10b981",
   removeBgNode: "#06b6d4",
   faceConsistencyNode: "#e11d48",
+  scriptNode: "#6366f1",
+  shotNode: "#14b8a6",
 };
+
+const DEFAULT_SCRIPT_DURATION = 30;
 
 const getEdgeStyle = (sourceType?: BoardNodeType | null) => ({
   stroke: sourceType ? EDGE_COLORS[sourceType] : "#94a3b8",
@@ -67,7 +75,9 @@ export type BoardNodeType =
   | "seedNode"
   | "upscaleNode"
   | "removeBgNode"
-  | "faceConsistencyNode";
+  | "faceConsistencyNode"
+  | "scriptNode"
+  | "shotNode";
 
 interface BoardStoreConfig {
   boardId?: string;
@@ -143,6 +153,16 @@ interface BoardState {
   addUpscaleNode: (viewport?: Viewport) => void;
   addRemoveBgNode: (viewport?: Viewport) => void;
   addFaceConsistencyNode: (viewport?: Viewport) => void;
+  addScriptNode: (viewport?: Viewport) => void;
+  // Lays out (or updates) Shot nodes plus one Video node per new shot for a
+  // Script node, from an AI shot breakdown.
+  applyShotPlans: (input: {
+    scriptNodeId: string;
+    plans: ShotPlan[];
+    sceneHashes: Record<string, string>;
+    videoModelId: string;
+    aspectRatio: string;
+  }) => void;
   updateNodeData: (
     nodeId: string,
     data: Record<string, unknown>
@@ -569,6 +589,29 @@ function createBoardStore({
             position,
             data: { label: "Face Consistency" },
           };
+        case "scriptNode": {
+          const data: ScriptNodeData = {
+            label: "Script",
+            brief: { product: "", audience: "", goal: "", tone: "", notes: "" },
+            title: "Untitled script",
+            logline: "",
+            structureId: "hook-problem-solution-cta",
+            targetDuration: DEFAULT_SCRIPT_DURATION,
+            platform: "TikTok / Reels",
+            aspectRatio: "9:16",
+            doc: buildStructureSkeleton({
+              structureId: "hook-problem-solution-cta",
+              targetDuration: DEFAULT_SCRIPT_DURATION,
+              createSceneId: createId,
+            }),
+          };
+          return {
+            id: `script-${timestamp}`,
+            type: "scriptNode",
+            position,
+            data,
+          };
+        }
         default:
           return {
             id: `${nodeType}-${timestamp}`,
@@ -1057,7 +1100,7 @@ function createBoardStore({
             targetNode?.type === "videoNode" ||
             targetNode?.type === "faceConsistencyNode"
           ) {
-            if (sourceNode?.type === "inputNode") {
+            if (sourceNode?.type === "inputNode" || sourceNode?.type === "shotNode") {
               params.targetHandle = "input";
             } else if (sourceNode?.type === "promptNode") {
               params.targetHandle = "prompt";
@@ -1179,6 +1222,31 @@ function createBoardStore({
       },
       addFaceConsistencyNode: (viewport) => {
         get().createNodeWithType("faceConsistencyNode", viewport);
+      },
+      addScriptNode: (viewport) => {
+        get().createNodeWithType("scriptNode", viewport);
+      },
+      applyShotPlans: ({ scriptNodeId, plans, sceneHashes, videoModelId, aspectRatio }) => {
+        set((state) => {
+          const scriptNode = state.nodes.find((node) => node.id === scriptNodeId);
+          if (!scriptNode) {
+            throw new Error(`Script node ${scriptNodeId} not found on this board`);
+          }
+          const graph = applyShotPlans({
+            scriptNode,
+            plans,
+            sceneHashes,
+            videoModelId,
+            aspectRatio,
+            nodes: state.nodes,
+            edges: state.edges,
+            createId,
+          });
+          const nextNodes = attachCallbacksToNodes(graph.nodes);
+          const nextEdges = graph.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+          scheduleSaveDebounced(nextNodes, nextEdges);
+          return { ...state, nodes: nextNodes, edges: nextEdges };
+        });
       },
       updateNodeData: (nodeId, data) => {
         set((state) => {

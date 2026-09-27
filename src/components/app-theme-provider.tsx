@@ -76,7 +76,6 @@ export function AppThemeProvider({
     };
     mql.addEventListener("change", onChange);
     return () => mql.removeEventListener("change", onChange);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setTheme = useCallback((next: Theme) => {

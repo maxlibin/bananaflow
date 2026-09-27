@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "../../ui/tooltip";
 import {
+  FileText,
   MessageSquare,
   Square,
   Video,
@@ -21,6 +22,7 @@ import { useBoardStore } from "../../../stores/board-store";
 export default function FlowControls() {
   const viewport = useViewport();
   const addInputNode = useBoardStore((state) => state.addInputNode);
+  const addScriptNode = useBoardStore((state) => state.addScriptNode);
   const addOutputNode = useBoardStore((state) => state.addOutputNode);
   const addVideoNode = useBoardStore((state) => state.addVideoNode);
   const addSeedNode = useBoardStore((state) => state.addSeedNode);
@@ -39,6 +41,17 @@ export default function FlowControls() {
         back to stroke-only here.
       */}
       <div className="controls-addon flex flex-col order-first border-b [&_svg]:!fill-none [&_svg]:!stroke-current">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ControlButton onClick={() => addScriptNode(viewport)} data-testid="add-script-node">
+              <FileText className="h-4 w-4" />
+            </ControlButton>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Add Script Node (write the story, then break it into shots)</p>
+          </TooltipContent>
+        </Tooltip>
+
         <Tooltip>
           <TooltipTrigger asChild>
             <ControlButton onClick={() => addInputNode(viewport)}>

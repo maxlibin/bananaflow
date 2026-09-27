@@ -76,6 +76,18 @@ export const NodeBox = ({
       border: "border-pink-300",
       selectedBorder: "border-pink-500/70",
     },
+    scriptNode: {
+      dot: "bg-indigo-500",
+      handle: "bg-indigo-400",
+      border: "border-indigo-300",
+      selectedBorder: "border-indigo-500/70",
+    },
+    shotNode: {
+      dot: "bg-teal-500",
+      handle: "bg-teal-400",
+      border: "border-teal-300",
+      selectedBorder: "border-teal-500/70",
+    },
     default: {
       dot: "bg-primary",
       handle: "bg-primary",

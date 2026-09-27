@@ -35,6 +35,7 @@ const localCanvasHost: CanvasHost = {
   },
   // No credit system: the provider bills the user's own key.
   costPreview: () => null,
+  scriptAssistant: null,
   onLimit: (notice) => {
     void notifyDialog({ title: "Limit reached", description: notice.message });
   },
