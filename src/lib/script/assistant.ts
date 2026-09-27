@@ -1,4 +1,5 @@
 import type {
+  EntityKind,
   ScriptBriefAnswers,
   ShotCameraMove,
   ShotDialogueLine,
@@ -61,6 +62,13 @@ export type ShotPlan = {
   dialogue: ShotDialogueLine[];
   voiceover: string;
   onScreenText: string;
+  entities: string[];
+};
+
+export type EntityDraft = {
+  kind: EntityKind;
+  name: string;
+  look: string;
 };
 
 export type ScriptWritingModel = {
@@ -101,8 +109,13 @@ export type ScriptAssistant = {
     platform: string;
     modelId: string;
   }) => Promise<ScriptCritique>;
+  extractEntities: (input: {
+    scriptText: string;
+    modelId: string;
+  }) => Promise<EntityDraft[]>;
   breakIntoShots: (input: {
     scenes: Array<{ sceneId: string; text: string; seconds: number }>;
+    entities: EntityDraft[];
     aspectRatio: string;
     // Clip lengths the chosen video model can produce, in whole seconds.
     shotSeconds: { min: number; max: number };

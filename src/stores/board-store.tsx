@@ -16,10 +16,10 @@ import { useStore } from "zustand";
 import { createId } from "@paralleldrive/cuid2";
 
 import type { VideoModelSettings } from "../lib/video-models";
-import type { ShotPlan } from "../lib/script/assistant";
+import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
 import { applyShotPlans } from "../lib/script/shot-graph";
 import { buildStructureSkeleton } from "../lib/script/structures";
-import type { ScriptNodeData } from "../lib/script/types";
+import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -41,7 +41,33 @@ const EDGE_COLORS: Record<BoardNodeType, string> = {
   faceConsistencyNode: "#e11d48",
   scriptNode: "#6366f1",
   shotNode: "#14b8a6",
+  entityNode: "#d946ef",
 };
+
+const ENTITY_COLUMN_OFFSET = -420;
+const ENTITY_ROW_SPACING = 380;
+
+export function entityValue(name: string, look: string): string {
+  return look.trim() ? `${name.trim().toUpperCase()}: ${look.trim()}` : "";
+}
+
+function entityNodeData(input: {
+  kind: EntityKind;
+  name: string;
+  look: string;
+  scriptNodeId: string | null;
+}): EntityNodeData {
+  return {
+    label: input.name,
+    kind: input.kind,
+    name: input.name,
+    look: input.look,
+    value: entityValue(input.name, input.look),
+    images: [],
+    scriptNodeId: input.scriptNodeId,
+    lastSheetUrl: null,
+  };
+}
 
 const DEFAULT_SCRIPT_DURATION = 30;
 
@@ -77,7 +103,8 @@ export type BoardNodeType =
   | "removeBgNode"
   | "faceConsistencyNode"
   | "scriptNode"
-  | "shotNode";
+  | "shotNode"
+  | "entityNode";
 
 interface BoardStoreConfig {
   boardId?: string;
@@ -154,12 +181,18 @@ interface BoardState {
   addRemoveBgNode: (viewport?: Viewport) => void;
   addFaceConsistencyNode: (viewport?: Viewport) => void;
   addScriptNode: (viewport?: Viewport) => void;
+  addEntityNode: (viewport?: Viewport) => void;
+  // Adds Entity nodes for a script's cast and props (skipping names already
+  // on the board for that script), stacked to the left of the Script node.
+  addEntitiesFromScript: (scriptNodeId: string, drafts: EntityDraft[]) => void;
   // Lays out (or updates) Shot nodes plus one Video node per new shot for a
   // Script node, from an AI shot breakdown.
   applyShotPlans: (input: {
     scriptNodeId: string;
     plans: ShotPlan[];
     sceneHashes: Record<string, string>;
+    sceneHeadings: Record<string, string>;
+    keyframeModelId: string;
     videoModelId: string;
     aspectRatio: string;
   }) => void;
@@ -588,6 +621,18 @@ function createBoardStore({
             type: "faceConsistencyNode",
             position,
             data: { label: "Face Consistency" },
+          };
+        case "entityNode":
+          return {
+            id: `entity-${timestamp}`,
+            type: "entityNode",
+            position,
+            data: entityNodeData({
+              kind: "character",
+              name: "New character",
+              look: "",
+              scriptNodeId: null,
+            }),
           };
         case "scriptNode": {
           const data: ScriptNodeData = {
@@ -1100,7 +1145,11 @@ function createBoardStore({
             targetNode?.type === "videoNode" ||
             targetNode?.type === "faceConsistencyNode"
           ) {
-            if (sourceNode?.type === "inputNode" || sourceNode?.type === "shotNode") {
+            if (
+              sourceNode?.type === "inputNode" ||
+              sourceNode?.type === "shotNode" ||
+              sourceNode?.type === "entityNode"
+            ) {
               params.targetHandle = "input";
             } else if (sourceNode?.type === "promptNode") {
               params.targetHandle = "prompt";
@@ -1226,7 +1275,38 @@ function createBoardStore({
       addScriptNode: (viewport) => {
         get().createNodeWithType("scriptNode", viewport);
       },
-      applyShotPlans: ({ scriptNodeId, plans, sceneHashes, videoModelId, aspectRatio }) => {
+      addEntityNode: (viewport) => {
+        get().createNodeWithType("entityNode", viewport);
+      },
+      addEntitiesFromScript: (scriptNodeId, drafts) => {
+        const scriptNode = get().nodes.find((node) => node.id === scriptNodeId);
+        if (!scriptNode) {
+          throw new Error(`Script node ${scriptNodeId} not found on this board`);
+        }
+        handleNodeInsertion((nodesSnapshot) => {
+          const existing = nodesSnapshot.filter(
+            (node) =>
+              node.type === "entityNode" &&
+              (node.data as EntityNodeData).scriptNodeId === scriptNodeId,
+          );
+          const taken = new Set(
+            existing.map((node) => (node.data as EntityNodeData).name.trim().toLowerCase()),
+          );
+          const added = drafts
+            .filter((draft) => !taken.has(draft.name.trim().toLowerCase()))
+            .map((draft, index): Node => ({
+              id: `entity-${createId()}`,
+              type: "entityNode",
+              position: {
+                x: scriptNode.position.x + ENTITY_COLUMN_OFFSET,
+                y: scriptNode.position.y + (existing.length + index) * ENTITY_ROW_SPACING,
+              },
+              data: entityNodeData({ ...draft, scriptNodeId }),
+            }));
+          return [...nodesSnapshot, ...added];
+        });
+      },
+      applyShotPlans: ({ scriptNodeId, plans, sceneHashes, sceneHeadings, keyframeModelId, videoModelId, aspectRatio }) => {
         set((state) => {
           const scriptNode = state.nodes.find((node) => node.id === scriptNodeId);
           if (!scriptNode) {
@@ -1236,6 +1316,8 @@ function createBoardStore({
             scriptNode,
             plans,
             sceneHashes,
+            sceneHeadings,
+            keyframeModelId,
             videoModelId,
             aspectRatio,
             nodes: state.nodes,

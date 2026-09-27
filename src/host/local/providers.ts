@@ -40,6 +40,7 @@ export const LOCAL_VIDEO_MODELS: Record<string, VideoModelInfo> = {
 // describe the same models.
 export const LOCAL_CANVAS_MODELS: CanvasModels = {
   image: [...GOOGLE_IMAGE_MODEL_OPTIONS, ...OPENAI_IMAGE_MODEL_OPTIONS],
+  referenceImageModel: "google/gemini-3-pro-image",
   imageSettings: { ...GOOGLE_IMAGE_SETTING_OPTIONS, ...OPENAI_IMAGE_SETTING_OPTIONS },
   video: [...GOOGLE_VIDEO_MODEL_OPTIONS, ...OPENAI_VIDEO_MODEL_OPTIONS],
   videoSettings: { ...GOOGLE_VIDEO_SETTING_OPTIONS, ...OPENAI_VIDEO_SETTING_OPTIONS },

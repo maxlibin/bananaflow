@@ -47,6 +47,9 @@ export type VideoSettingOptions = {
 
 export type CanvasModels = {
   image: ImageModelOption[];
+  // Image model used by default for shot keyframes and entity reference
+  // sheets; it must take several reference images and keep identities.
+  referenceImageModel: string;
   imageSettings: Record<string, ImageSettingOptions>;
   video: VideoModelOption[];
   videoSettings: Record<string, VideoSettingOptions>;

@@ -113,3 +113,14 @@ export function compileShotPrompt(shot: Shot, family: ShotModelFamily): string {
       return compileGeneric(shot);
   }
 }
+
+// Keyframe prompt for an image model: what one frame of the shot looks like.
+// No camera motion or dialogue, which image models render as blur or text.
+export function compileStillPrompt(shot: Shot): string {
+  return joinSentences([
+    `Single cinematic still frame, ${FRAMING_TEXT[shot.framing].toLowerCase()}`,
+    shot.action,
+    shot.setting ? `Setting: ${shot.setting}` : "",
+    shot.style ? `Style: ${shot.style}` : "",
+  ]);
+}

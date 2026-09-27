@@ -98,6 +98,30 @@ export type ShotCameraMove = (typeof SHOT_CAMERA_MOVES)[number];
 
 export type ShotDialogueLine = { character: string; line: string };
 
+export const ENTITY_KINDS = ["character", "product", "location"] as const;
+
+export type EntityKind = (typeof ENTITY_KINDS)[number];
+
+// A recurring character, product or location. Its reference images and look
+// feed every keyframe it appears in, so it renders the same across shots.
+export type EntityNodeData = {
+  label: string;
+  kind: EntityKind;
+  name: string;
+  look: string;
+  // `value` is what image/video nodes read from an "input" connection.
+  value: string;
+  images: Array<{
+    imageUrl: string;
+    blobPath?: string;
+    fileName?: string;
+    fileSize?: number;
+  }>;
+  scriptNodeId: string | null;
+  // URL of the last generated reference sheet already added to `images`.
+  lastSheetUrl: string | null;
+};
+
 export type Shot = {
   scriptNodeId: string;
   sceneId: string;
@@ -112,14 +136,17 @@ export type Shot = {
   dialogue: ShotDialogueLine[];
   voiceover: string;
   onScreenText: string;
+  // Names of the entities that appear in the shot.
+  entities: string[];
 };
 
 export type ShotNodeData = {
   label: string;
   shot: Shot;
-  // Compiled, model-ready prompt. Output and video nodes read `value` and
-  // `images` from whatever is wired into their "input" handle.
+  // Compiled, model-ready prompts. Video nodes read `value` (motion and
+  // speech); image nodes read `stillPrompt` (one frame) from a wired shot.
   value: string;
+  stillPrompt: string;
   images: Array<{
     imageUrl: string;
     blobPath?: string;

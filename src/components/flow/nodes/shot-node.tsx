@@ -8,7 +8,11 @@ import { NodeBox } from "./node-box";
 import { useReadOnly } from "../readonly-context";
 import { useShallow } from "zustand/react/shallow";
 import { useBoardStore } from "../../../stores/board-store";
-import { compileShotPrompt, modelFamilyFromModelId } from "../../../lib/script/compile-shot";
+import {
+  compileShotPrompt,
+  compileStillPrompt,
+  modelFamilyFromModelId,
+} from "../../../lib/script/compile-shot";
 import { extractScenes, hashScene } from "../../../lib/script/scenes";
 import {
   SHOT_CAMERA_MOVES,
@@ -39,8 +43,12 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
   const { shot } = data;
 
   const targetModelId = useBoardStore((state) => {
-    const edge = state.edges.find((item) => item.source === id);
-    const target = edge ? state.nodes.find((node) => node.id === edge.target) : undefined;
+    const targetIds = new Set(
+      state.edges.filter((item) => item.source === id).map((item) => item.target),
+    );
+    const target = state.nodes.find(
+      (node) => node.type === "videoNode" && targetIds.has(node.id),
+    );
     const model = (target?.data as { selectedModel?: unknown } | undefined)?.selectedModel;
     return typeof model === "string" ? model : "";
   });
@@ -64,16 +72,18 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
   useEffect(() => {
     if (isReadOnly) return;
     const compiled = compileShotPrompt(shot, modelFamilyFromModelId(targetModelId));
-    if (compiled !== data.value) {
-      updateNodeData(id, { value: compiled });
+    const still = compileStillPrompt(shot);
+    if (compiled !== data.value || still !== data.stillPrompt) {
+      updateNodeData(id, { value: compiled, stillPrompt: still });
     }
-  }, [id, isReadOnly, shot, targetModelId, data.value, updateNodeData]);
+  }, [id, isReadOnly, shot, targetModelId, data.value, data.stillPrompt, updateNodeData]);
 
   const updateShot = (patch: Partial<Shot>) => {
     const next = { ...shot, ...patch };
     updateNodeData(id, {
       shot: next,
       value: compileShotPrompt(next, modelFamilyFromModelId(targetModelId)),
+      stillPrompt: compileStillPrompt(next),
     });
   };
 

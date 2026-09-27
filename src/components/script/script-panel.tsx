@@ -19,17 +19,32 @@ import { useCanvasHost } from "../canvas-host/context";
 import { useReadOnly } from "../flow/readonly-context";
 import { useBoardStore } from "../../stores/board-store";
 import { GuidedStart } from "./guided-start";
+import { ScriptCast } from "./script-cast";
 import { ScriptDoctor } from "./script-doctor";
 import { ScriptEditor } from "./script-editor";
 import type { ScriptBrief, ScriptDraft } from "../../lib/script/assistant";
 import { draftToDoc } from "../../lib/script/draft-to-doc";
-import { extractScenes, hashScene, sceneToText } from "../../lib/script/scenes";
+import { extractScenes, hashScene, sceneToText, scriptToText } from "../../lib/script/scenes";
 import { STORY_STRUCTURES, buildStructureSkeleton } from "../../lib/script/structures";
 import { clipSecondsRange, estimateSceneTiming } from "../../lib/script/timing";
-import type { ScriptDoc, ScriptNodeData, ShotNodeData, StructureId } from "../../lib/script/types";
+import type {
+  EntityKind,
+  EntityNodeData,
+  ScriptDoc,
+  ScriptNodeData,
+  ShotNodeData,
+  StructureId,
+} from "../../lib/script/types";
 import { cn } from "../../lib/utils";
 
-type Tab = "write" | "guided" | "doctor";
+type Tab = "write" | "guided" | "cast" | "doctor";
+
+const TAB_LABELS: Record<Tab, string> = {
+  write: "Write",
+  guided: "Start with AI",
+  cast: "Cast & props",
+  doctor: "Script doctor",
+};
 
 // Editor changes land in a ref; React state and the board store (which every
 // node subscribes to) update once typing pauses. Setting state inside Slate's
@@ -80,13 +95,22 @@ export function ScriptPanel({
   const updateNodeData = useBoardStore((state) => state.updateNodeData);
   const applyShotPlans = useBoardStore((state) => state.applyShotPlans);
   const nodes = useBoardStore((state) => state.nodes);
+  const addEntitiesFromScript = useBoardStore((state) => state.addEntitiesFromScript);
+  const entities = nodes
+    .filter(
+      (node) =>
+        node.type === "entityNode" && (node.data as EntityNodeData).scriptNodeId === nodeId,
+    )
+    .map((node) => node.data as EntityNodeData);
 
-  const videoModels = models.video.filter((model) => !model.isComingSoon);
+  // Shots animate from their keyframe, so the video model must take an image.
+  const videoModels = models.video.filter((model) => !model.isComingSoon && model.supportsImage);
   const [tab, setTab] = useState<Tab>(
     scriptAssistant && !hasWrittenLines(data.doc) ? "guided" : "write",
   );
   const [modelId, setModelId] = useState(scriptAssistant?.defaultModelId ?? "");
   const [videoModelId, setVideoModelId] = useState(videoModels[0]?.value ?? "");
+  const [keyframeModelId, setKeyframeModelId] = useState(models.referenceImageModel);
   const [editorVersion, setEditorVersion] = useState(0);
   const [breaking, setBreaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -148,10 +172,30 @@ export function ScriptPanel({
     }
   };
 
+  const findCast = async (fromDoc: ScriptDoc) => {
+    if (!scriptAssistant) return;
+    const drafts = await scriptAssistant.extractEntities({
+      scriptText: scriptToText(fromDoc),
+      modelId,
+    });
+    addEntitiesFromScript(nodeId, drafts);
+  };
+
   const applyDraft = (draft: ScriptDraft) => {
+    const nextDoc = draftToDoc(draft, createId);
     update({ title: draft.title, logline: draft.logline });
-    replaceDoc(draftToDoc(draft, createId));
+    replaceDoc(nextDoc);
     setTab("write");
+    findCast(nextDoc).catch((caught: unknown) =>
+      setError(
+        `Script written, but finding its cast failed: ${caught instanceof Error ? caught.message : String(caught)}`,
+      ),
+    );
+  };
+
+  const addBlankEntity = (kind: EntityKind) => {
+    const count = entities.filter((entity) => entity.kind === kind).length + 1;
+    addEntitiesFromScript(nodeId, [{ kind, name: `${kind} ${count}`, look: "" }]);
   };
 
   const pendingScenes = scenesNeedingShots(doc, nodeId, nodes);
@@ -168,6 +212,7 @@ export function ScriptPanel({
           text: sceneToText(scene),
           seconds: estimateSceneTiming(scene).seconds,
         })),
+        entities: entities.map(({ kind, name, look }) => ({ kind, name, look })),
         aspectRatio: data.aspectRatio,
         shotSeconds: clipSecondsRange(models.videoSettings[videoModelId] ?? {}),
         modelId,
@@ -178,6 +223,10 @@ export function ScriptPanel({
         sceneHashes: Object.fromEntries(
           scenesToBreak.map((scene) => [scene.sceneId, hashScene(scene)]),
         ),
+        sceneHeadings: Object.fromEntries(
+          scenesToBreak.map((scene) => [scene.sceneId, scene.heading]),
+        ),
+        keyframeModelId,
         videoModelId,
         aspectRatio: data.aspectRatio,
       });
@@ -271,7 +320,7 @@ export function ScriptPanel({
 
         <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
           <div className="flex gap-1">
-            {(["write", ...(scriptAssistant && !isReadOnly ? ["guided"] : []), "doctor"] as Tab[]).map((item) => (
+            {(["write", ...(scriptAssistant && !isReadOnly ? ["guided"] : []), "cast", "doctor"] as Tab[]).map((item) => (
               <button
                 key={item}
                 type="button"
@@ -284,7 +333,7 @@ export function ScriptPanel({
                     : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                {item === "write" ? "Write" : item === "guided" ? "Start with AI" : "Script doctor"}
+                {TAB_LABELS[item]}
               </button>
             ))}
           </div>
@@ -326,6 +375,15 @@ export function ScriptPanel({
               onDraft={applyDraft}
             />
           )}
+          {tab === "cast" && (
+            <ScriptCast
+              entities={entities}
+              assistant={scriptAssistant}
+              readOnly={isReadOnly}
+              onFind={() => findCast(flushDoc())}
+              onAdd={addBlankEntity}
+            />
+          )}
           {tab === "doctor" && (
             <ScriptDoctor
               doc={doc}
@@ -339,6 +397,18 @@ export function ScriptPanel({
 
         {scriptAssistant && !isReadOnly && (
           <div className="flex flex-wrap items-center gap-2 border-t p-3">
+            <Select value={keyframeModelId} onValueChange={setKeyframeModelId}>
+              <SelectTrigger className="h-8 w-44 text-xs" aria-label="Image model for keyframes">
+                <SelectValue placeholder="Keyframe model" />
+              </SelectTrigger>
+              <SelectContent>
+                {models.image.map((model) => (
+                  <SelectItem key={model.value} value={model.value} className="text-xs">
+                    Keyframes: {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={videoModelId} onValueChange={setVideoModelId}>
               <SelectTrigger className="h-8 w-48 text-xs" aria-label="Video model for shots">
                 <SelectValue placeholder="Video model" />

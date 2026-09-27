@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Handle, Position, useNodeConnections } from "@xyflow/react";
 import NextImage from "next/image";
 import { Button } from "../../ui/button";
@@ -20,6 +20,7 @@ import {
 } from "../../ui/select";
 import { ModelCombobox } from "../model-combobox";
 import { NodeBox } from "./node-box";
+import { mergeConnectedImages, type ConnectedImage } from "./connected-images";
 import {
   Image,
   MessageSquare,
@@ -197,19 +198,22 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const [connectedData, setConnectedData] = useState<{
-    images: Array<{
-      nodeId: string;
-      imageUrl: string;
-      fileName?: string;
-      blobPath?: string;
-      fileSize?: number;
-    }>;
+  const [connections, setConnections] = useState<{
     prompt: string;
+    imagesFromImages: ConnectedImage[];
+    imagesFromInput: ConnectedImage[];
   }>({
-    images: [],
     prompt: "",
+    imagesFromImages: [],
+    imagesFromInput: [],
   });
+  const connectedData = useMemo(
+    () => ({
+      prompt: connections.prompt,
+      images: mergeConnectedImages(connections.imagesFromImages, connections.imagesFromInput),
+    }),
+    [connections],
+  );
 
   // Estimated credits to charge on Generate. The host mirrors the
   // server-side reservation so users see the cost up front.
@@ -253,12 +257,12 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
     (handleId: string, connectedIds: string[]) => {
       if (handleId === "images") {
         if (!connectedIds.length) {
-          setConnectedData((prev) =>
-            prev.images.length === 0
+          setConnections((prev) =>
+            prev.imagesFromImages.length === 0
               ? prev
               : {
                   ...prev,
-                  images: [],
+                  imagesFromImages: [],
                 }
           );
           return;
@@ -305,8 +309,8 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
           fileSize?: number;
         }>;
 
-        setConnectedData((prev) => {
-          const prevImages = prev.images || [];
+        setConnections((prev) => {
+          const prevImages = prev.imagesFromImages || [];
           const hasChanged =
             prevImages.length !== imageData.length ||
             prevImages.some((prevImg, index) => {
@@ -326,7 +330,7 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
 
           return {
             ...prev,
-            images: imageData,
+            imagesFromImages: imageData,
           };
         });
       } else if (handleId === "prompt") {
@@ -342,7 +346,7 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
             ? (promptNode.data as { value?: string }).value ?? ""
             : "";
 
-        setConnectedData((prev) => {
+        setConnections((prev) => {
           if (prev.prompt === promptValue) {
             return prev;
           }
@@ -353,12 +357,12 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
         });
       } else if (handleId === "input") {
         if (!connectedIds.length) {
-          setConnectedData((prev) => {
-            const noImages = prev.images.length === 0;
+          setConnections((prev) => {
+            const noImages = prev.imagesFromInput.length === 0;
             const noPrompt = !prev.prompt;
             return noImages && noPrompt
               ? prev
-              : { ...prev, images: [], prompt: "" };
+              : { ...prev, imagesFromInput: [], prompt: "" };
           });
           return;
         }
@@ -367,8 +371,9 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
 
         const promptText = connectedNodes
           .map((node) => {
-            const payload = (node.data ?? {}) as { value?: string };
-            return payload.value ?? "";
+            const payload = (node.data ?? {}) as { value?: string; stillPrompt?: string };
+            // An image of a shot is its keyframe: use the still-frame prompt.
+            return node.type === "shotNode" ? payload.stillPrompt ?? "" : payload.value ?? "";
           })
           .filter((s) => s.length > 0)
           .join("\n");
@@ -404,9 +409,9 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
           }
         }
 
-        setConnectedData((prev) => {
+        setConnections((prev) => {
           const promptChanged = prev.prompt !== promptText;
-          const prevImages = prev.images || [];
+          const prevImages = prev.imagesFromInput || [];
           const imagesChanged =
             prevImages.length !== aggregatedImages.length ||
             prevImages.some((p, i) => {
@@ -423,7 +428,7 @@ function OutputNode({ id, data, isConnectable, selected }: OutputNodeProps) {
           return {
             ...prev,
             prompt: promptText,
-            images: aggregatedImages,
+            imagesFromInput: aggregatedImages,
           };
         });
       }

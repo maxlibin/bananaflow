@@ -88,6 +88,12 @@ export const NodeBox = ({
       border: "border-teal-300",
       selectedBorder: "border-teal-500/70",
     },
+    entityNode: {
+      dot: "bg-fuchsia-500",
+      handle: "bg-fuchsia-400",
+      border: "border-fuchsia-300",
+      selectedBorder: "border-fuchsia-500/70",
+    },
     default: {
       dot: "bg-primary",
       handle: "bg-primary",
