@@ -1,8 +1,10 @@
+import type { LanguageModel } from "ai";
 import type { ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type * as engineSchema from "../../db/schema";
 import type { AdvancedOpId } from "../advanced-ops";
 import type { ImageModelInfo, VideoModelInfo } from "../model-registry";
+import type { TextModelOption } from "../model-options";
 import type { Provider, ProviderId } from "../providers/types";
 import type { GenerationFeature } from "./features";
 
@@ -133,6 +135,24 @@ export type GenerationOutcome =
       bulkRunId: string;
     };
 
+// One LLM call made for a user (script writing). Hosts that bill text usage
+// check and charge it through policy.beforeText / afterText.
+export type TextRequest = {
+  userId: string;
+  task: string;
+  model: string;
+  estimatedInputTokens: number;
+  maxOutputTokens: number;
+};
+
+export type TextOutcome = {
+  userId: string;
+  task: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+};
+
 export type BoardCreated = {
   userId: string;
   boardId: string;
@@ -177,6 +197,15 @@ export type HostAdapter = {
     image: Record<string, ImageModelInfo>;
     video: Record<string, VideoModelInfo>;
   };
+  text: {
+    // Writing models in picker order; `defaultModelId` for drafting and
+    // critique, `fastModelId` for quick inline edits and hook alternatives.
+    models: TextModelOption[];
+    defaultModelId: string;
+    fastModelId: string;
+    // The AI SDK model to call for this user (BYOK hosts use the user's key).
+    languageModel(userId: string, modelId: string): Promise<LanguageModel>;
+  };
   keys: {
     // Throws ProviderKeyMissingError when no key is available for the user.
     resolveProviderKey(userId: string, provider: ProviderId): Promise<string>;
@@ -184,6 +213,8 @@ export type HostAdapter = {
   policy: {
     beforeGenerate(request: GenerationRequest): Promise<GenerationDecision>;
     afterGenerate(outcome: GenerationOutcome): Promise<void>;
+    beforeText(request: TextRequest): Promise<LimitDecision>;
+    afterText(outcome: TextOutcome): Promise<void>;
   };
   limits: {
     tabLimit(userId: string): Promise<number>;

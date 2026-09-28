@@ -1,3 +1,4 @@
+import type { TextModelOption } from "../model-options";
 import type {
   EntityKind,
   ScriptBriefAnswers,
@@ -71,11 +72,7 @@ export type EntityDraft = {
   look: string;
 };
 
-export type ScriptWritingModel = {
-  id: string;
-  label: string;
-  description: string;
-};
+export type ScriptWritingModel = TextModelOption;
 
 // AI help for the Script node. Hosts without an LLM pass null and the script
 // editor works without AI. Every method rejects with a descriptive Error on

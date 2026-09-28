@@ -5,6 +5,7 @@ import type * as boards from "../../lib/actions/boards";
 import type * as bulkRuns from "../../lib/actions/bulk-runs";
 import type * as media from "../../lib/actions/media";
 import type * as runHistory from "../../lib/actions/run-history";
+import type * as script from "../../lib/actions/script";
 import type * as userPreferences from "../../lib/actions/user-preferences";
 import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
@@ -32,6 +33,13 @@ export type CanvasActions = {
   pinMedia: WithoutHost<typeof runHistory.pinMedia>;
   getBulkRun: WithoutHost<typeof bulkRuns.getBulkRun>;
   deleteMedia: WithoutHost<typeof media.deleteMedia>;
+  proposeScriptConcepts: WithoutHost<typeof script.proposeScriptConcepts>;
+  writeScript: WithoutHost<typeof script.writeScript>;
+  editScriptSelection: WithoutHost<typeof script.editScriptSelection>;
+  alternativeScriptHooks: WithoutHost<typeof script.alternativeScriptHooks>;
+  critiqueScript: WithoutHost<typeof script.critiqueScript>;
+  extractScriptEntities: WithoutHost<typeof script.extractScriptEntities>;
+  breakScriptIntoShots: WithoutHost<typeof script.breakScriptIntoShots>;
 };
 
 export type CostPreviewInput =

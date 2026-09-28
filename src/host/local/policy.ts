@@ -6,4 +6,8 @@ export const localPolicy: HostAdapter["policy"] = {
     return { ok: true, reservedMicro: BigInt(0) };
   },
   async afterGenerate() {},
+  async beforeText() {
+    return { ok: true };
+  },
+  async afterText() {},
 };

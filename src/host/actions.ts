@@ -5,6 +5,7 @@ import * as boards from "../lib/actions/boards";
 import * as bulkRuns from "../lib/actions/bulk-runs";
 import * as media from "../lib/actions/media";
 import * as runHistory from "../lib/actions/run-history";
+import * as script from "../lib/actions/script";
 import * as userPreferences from "../lib/actions/user-preferences";
 import type { MediaListOptions } from "../lib/actions/media";
 import type { CreateBoardData, UpdateBoardData } from "../types/board";
@@ -71,4 +72,34 @@ export async function getAllMedia(options?: MediaListOptions) {
 
 export async function deleteMedia(mediaId: string) {
   return media.deleteMedia(host, mediaId);
+}
+
+type ScriptInput<K extends keyof typeof script> = Parameters<(typeof script)[K]>[1];
+
+export async function proposeScriptConcepts(input: ScriptInput<"proposeScriptConcepts">) {
+  return script.proposeScriptConcepts(host, input);
+}
+
+export async function writeScript(input: ScriptInput<"writeScript">) {
+  return script.writeScript(host, input);
+}
+
+export async function editScriptSelection(input: ScriptInput<"editScriptSelection">) {
+  return script.editScriptSelection(host, input);
+}
+
+export async function alternativeScriptHooks(input: ScriptInput<"alternativeScriptHooks">) {
+  return script.alternativeScriptHooks(host, input);
+}
+
+export async function critiqueScript(input: ScriptInput<"critiqueScript">) {
+  return script.critiqueScript(host, input);
+}
+
+export async function extractScriptEntities(input: ScriptInput<"extractScriptEntities">) {
+  return script.extractScriptEntities(host, input);
+}
+
+export async function breakScriptIntoShots(input: ScriptInput<"breakScriptIntoShots">) {
+  return script.breakScriptIntoShots(host, input);
 }

@@ -3,6 +3,9 @@
 
 export type ImageModelOption = { value: string; label: string };
 
+// A language model offered for script writing.
+export type TextModelOption = { id: string; label: string; description: string };
+
 export type ImageSettingOptions = {
   aspectRatios?: string[];
   // Some models only allow certain resolutions for certain aspect ratios.

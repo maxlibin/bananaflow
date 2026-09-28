@@ -10,6 +10,7 @@ Banana Flow is the engine behind [aibananaflow.com](https://aibananaflow.com). T
 
 - Node canvas built on React Flow: input nodes (prompt + reference images), image output, video output, seed-frame extraction, upscale, background removal, face consistency.
 - Direct provider access with your own keys: GPT Image 1, 1.5, 2 and 2.5 and Sora 2 from OpenAI; Nano Banana, Nano Banana Pro, Nano Banana 2 and Veo 3.1 from Google AI Studio.
+- Script writing: a screenplay editor node with story structures and timing, AI concepts, full scripts, inline rewrites, a script doctor and a cast of recurring characters, products and locations, on GPT-5.6 or Gemini with your own key. "Break into shots" turns the script into shots, keyframes and videos that keep faces and products consistent.
 - Bulk runs with `{a|b|c}` wildcard prompts, run history with re-run and variations, pinned results, a media library, multi-board tabs.
 - Filerobot image editor for cropping, annotating and adjusting inputs before generation.
 - Local-disk storage by default, any S3-compatible bucket optionally.
