@@ -69,6 +69,7 @@ const localCanvasHost: CanvasHost = {
   onLimit,
   onGenerationSettled,
   track: () => {},
+  directionSamples: {},
 };
 
 export function LocalCanvasHostProvider({ children }: { children: ReactNode }) {

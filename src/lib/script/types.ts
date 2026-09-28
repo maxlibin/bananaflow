@@ -1,3 +1,10 @@
+import type {
+  CameraPresetId,
+  LensPresetId,
+  LightingPresetId,
+  LookPresetId,
+} from "../direction/presets";
+
 // The script document is a Plate value: a flat list of top-level blocks.
 // Screenplay blocks carry a `type` from SCRIPT_BLOCK_TYPES; a "scene" block
 // opens a scene that owns every following block until the next scene.
@@ -52,6 +59,9 @@ export type ScriptNodeData = {
   targetDuration: number;
   platform: string;
   aspectRatio: string;
+  // Look and lighting every shot of this script inherits unless it overrides.
+  look: LookPresetId | null;
+  lighting: LightingPresetId | null;
   doc: ScriptDoc;
 };
 
@@ -82,19 +92,9 @@ export const SHOT_FRAMINGS = [
 
 export type ShotFraming = (typeof SHOT_FRAMINGS)[number];
 
-export const SHOT_CAMERA_MOVES = [
-  "static",
-  "push-in",
-  "pull-out",
-  "pan",
-  "tilt",
-  "tracking",
-  "orbit",
-  "handheld",
-  "crane",
-] as const;
+export { CAMERA_PRESET_IDS as SHOT_CAMERA_MOVES } from "../direction/presets";
 
-export type ShotCameraMove = (typeof SHOT_CAMERA_MOVES)[number];
+export type ShotCameraMove = CameraPresetId;
 
 export type ShotDialogueLine = { character: string; line: string };
 
@@ -130,6 +130,10 @@ export type Shot = {
   duration: number;
   framing: ShotFraming;
   cameraMove: ShotCameraMove;
+  lens: LensPresetId | null;
+  // Per-shot overrides of the script's look and lighting.
+  look: LookPresetId | null;
+  lighting: LightingPresetId | null;
   action: string;
   setting: string;
   style: string;

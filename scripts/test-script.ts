@@ -4,6 +4,8 @@ import type { Node } from "@xyflow/react";
 
 import type { ShotPlan } from "../src/lib/script/assistant";
 import { compileShotPrompt, compileStillPrompt } from "../src/lib/script/compile-shot";
+
+const noDirection = { look: null, lighting: null };
 import { extractScenes, hashScene } from "../src/lib/script/scenes";
 import { applyShotPlans } from "../src/lib/script/shot-graph";
 import { allocateSeconds } from "../src/lib/script/structures";
@@ -54,6 +56,9 @@ const shot: Shot = {
   duration: 5,
   framing: "close-up",
   cameraMove: "push-in",
+  lens: null,
+  look: null,
+  lighting: null,
   action: "Maya holds the phone up to camera",
   setting: "sunny kitchen",
   style: "",
@@ -65,14 +70,14 @@ const shot: Shot = {
 
 test("Veo prompt keeps dialogue inline, Sora puts it in its own block", () => {
   assert.equal(
-    compileShotPrompt(shot, "veo"),
-    'Close-up, slow push-in. Maya holds the phone up to camera. Setting: sunny kitchen. MAYA says: "It just works."',
+    compileShotPrompt(shot, "veo", noDirection),
+    'Close-up, slow dolly push-in toward the subject. Maya holds the phone up to camera. Setting: sunny kitchen. MAYA says: "It just works."',
   );
   assert.equal(
-    compileShotPrompt(shot, "sora"),
-    'Close-up, slow push-in. Maya holds the phone up to camera. Setting: sunny kitchen.\n\nDialogue:\n- MAYA: "It just works."',
+    compileShotPrompt(shot, "sora", noDirection),
+    'Close-up, slow dolly push-in toward the subject. Maya holds the phone up to camera. Setting: sunny kitchen.\n\nDialogue:\n- MAYA: "It just works."',
   );
-  assert.match(compileShotPrompt(shot, "seedance"), /^Single shot, 5s\.\n/);
+  assert.match(compileShotPrompt(shot, "seedance", noDirection), /^Single shot, 5s\.\n/);
 });
 
 function plan(sceneId: string, order: number, action: string, entities: string[]): ShotPlan {
@@ -132,7 +137,7 @@ test("structure skeleton seconds always add up to the target", () => {
 
 test("still prompt describes one frame without camera motion or speech", () => {
   assert.equal(
-    compileStillPrompt(shot),
+    compileStillPrompt(shot, noDirection),
     "Single cinematic still frame, close-up. Maya holds the phone up to camera. Setting: sunny kitchen.",
   );
 });
@@ -194,4 +199,21 @@ test("tagged entities feed their shots' keyframes and re-sync on re-break", () =
   });
   assert.deepEqual(entityEdges(second), ["maya"]);
   assert.equal(second.nodes.filter((node) => node.type === "outputNode").length, 1);
+});
+
+test("presets compile into the prompt; a shot's own look beats the script's", () => {
+  const directed: Shot = { ...shot, cameraMove: "orbit", lens: "portrait-85mm" };
+  const scriptDirection = { look: "kodak-film", lighting: "soft-window" } as const;
+  assert.equal(
+    compileShotPrompt(directed, "generic", scriptDirection),
+    'Close-up, camera orbiting slowly around the subject, shot on an 85mm portrait lens at f/1.8 with creamy bokeh. Maya holds the phone up to camera. Setting: sunny kitchen. Lighting: soft diffused window light from the side. Style: shot on Kodak Portra 400 film, warm natural tones, fine film grain. MAYA says: "It just works."',
+  );
+  assert.match(
+    compileStillPrompt({ ...directed, style: "warm grade." }, scriptDirection),
+    /Style: warm grade, shot on Kodak/,
+  );
+  const overridden = compileStillPrompt({ ...directed, look: "noir" }, scriptDirection);
+  assert.match(overridden, /black and white film noir/);
+  assert.doesNotMatch(overridden, /Kodak/);
+  assert.doesNotMatch(overridden, /orbiting/);
 });

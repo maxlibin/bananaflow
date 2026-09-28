@@ -644,6 +644,8 @@ function createBoardStore({
             targetDuration: DEFAULT_SCRIPT_DURATION,
             platform: "TikTok / Reels",
             aspectRatio: "9:16",
+            look: null,
+            lighting: null,
             doc: buildStructureSkeleton({
               structureId: "hook-problem-solution-cta",
               targetDuration: DEFAULT_SCRIPT_DURATION,

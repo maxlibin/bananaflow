@@ -12,6 +12,7 @@ import type { GenerationFeature } from "../../lib/host/features";
 import type { HostAdapter } from "../../lib/host/types";
 import type { CanvasModels } from "../../lib/model-options";
 import type { ScriptAssistant } from "../../lib/script/assistant";
+import type { DirectionSamples } from "../../lib/direction/presets";
 import type { TrackFn } from "../../lib/track-events";
 
 // The engine exports action implementations that take the host first. An
@@ -79,6 +80,9 @@ export type CanvasHost = {
   track: TrackFn;
   // AI writing help for Script nodes; null when the host has no LLM.
   scriptAssistant: ScriptAssistant | null;
+  // Sample media per direction preset, keyed by directionSampleKey(); presets
+  // without one show their description only.
+  directionSamples: DirectionSamples;
 };
 
 const CanvasHostContext = createContext<CanvasHost | null>(null);

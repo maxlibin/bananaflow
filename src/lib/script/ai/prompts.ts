@@ -3,6 +3,7 @@ import type {
   ScriptBrief,
   ScriptConcept,
 } from "../assistant";
+import { CAMERA_PRESETS, LENS_PRESETS } from "../../direction/presets";
 import { getStoryStructure } from "../structures";
 import { SPOKEN_WORDS_PER_SECOND } from "../timing";
 
@@ -155,11 +156,18 @@ export function breakIntoShotsPrompt(input: {
     `- The video model makes clips of ${input.shotSeconds.min}-${input.shotSeconds.max} whole seconds. Every shot duration must be a whole number in that range.`,
     `- Use ONE shot per scene. Only split a scene into 2-3 shots when it is longer than ${input.shotSeconds.max}s or truly needs a new camera angle, and never create a shot shorter than ${input.shotSeconds.min}s. A scene shorter than ${input.shotSeconds.min}s becomes one ${input.shotSeconds.min}s shot.`,
     "- Number shots per scene starting at 1 ('order'), and copy the scene's sceneId exactly.",
-    "- Each shot is generated independently, so 'action' must fully describe who and what is on screen every time (appearance, clothing, product look) and what physically happens. One camera move per shot.",
+    "- Each shot is generated independently, so 'action' must fully describe who and what is on screen every time (appearance, clothing, product look) and what physically happens.",
     "- 'setting' describes the location and light. 'style' is one consistent visual style string reused for every shot (film look, color grade, lens feel).",
     "- Put spoken lines in 'dialogue' (character + line) or 'voiceover'; split long lines across shots so each shot's speech fits its duration.",
     "- 'onScreenText' only when the script has on-screen text for that moment, else empty.",
+    "- 'cameraMove' is one camera preset id and 'lens' one lens preset id (or null for no lens preference) from the lists below. Pick what serves the story beat: slow push-ins for emotion, orbits for hero product moments, handheld for UGC realism, top-down for products on a table, crash zooms or whip pans for energy. Vary them across shots.",
     "- 'entities' lists the exact names of the cast and props below that are visible in the shot (empty if none). In 'action', describe each of them exactly as their look says.",
+    "",
+    "CAMERA PRESETS:",
+    CAMERA_PRESETS.map((preset) => `- ${preset.id}: ${preset.description}`).join("\n"),
+    "",
+    "LENS PRESETS:",
+    LENS_PRESETS.map((preset) => `- ${preset.id}: ${preset.description}`).join("\n"),
     "",
     "CAST AND PROPS:",
     input.entities.length > 0

@@ -5,6 +5,7 @@ import { Clapperboard, RefreshCw } from "lucide-react";
 import { Input } from "../../ui/input";
 import { Textarea } from "../../ui/textarea";
 import { NodeBox } from "./node-box";
+import { DirectionPicker } from "../../direction/direction-picker";
 import { useReadOnly } from "../readonly-context";
 import { useShallow } from "zustand/react/shallow";
 import { useBoardStore } from "../../../stores/board-store";
@@ -15,7 +16,6 @@ import {
 } from "../../../lib/script/compile-shot";
 import { extractScenes, hashScene } from "../../../lib/script/scenes";
 import {
-  SHOT_CAMERA_MOVES,
   SHOT_FRAMINGS,
   type ScriptNodeData,
   type Shot,
@@ -35,7 +35,13 @@ interface ShotNodeProps {
 
 type SceneState = "current" | "changed" | "removed";
 
-type SceneLookup = { state: SceneState; heading: string | null };
+type SceneLookup = {
+  state: SceneState;
+  heading: string | null;
+  // Script nodes saved before presets have no look/lighting fields.
+  look: ScriptNodeData["look"];
+  lighting: ScriptNodeData["lighting"];
+};
 
 const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => {
   const { isReadOnly } = useReadOnly();
@@ -56,34 +62,47 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
   const scene = useBoardStore(
     useShallow((state): SceneLookup => {
       const scriptNode = state.nodes.find((node) => node.id === shot.scriptNodeId);
-      if (!scriptNode) return { state: "removed", heading: null };
-      const match = extractScenes((scriptNode.data as ScriptNodeData).doc).find(
-        (item) => item.sceneId === shot.sceneId,
-      );
-      if (!match) return { state: "removed", heading: null };
+      if (!scriptNode) return { state: "removed", heading: null, look: null, lighting: null };
+      const scriptData = scriptNode.data as ScriptNodeData;
+      const direction = { look: scriptData.look ?? null, lighting: scriptData.lighting ?? null };
+      const match = extractScenes(scriptData.doc).find((item) => item.sceneId === shot.sceneId);
+      if (!match) return { state: "removed", heading: null, ...direction };
       return {
         state: hashScene(match) === shot.sceneHash ? "current" : "changed",
         heading: match.heading,
+        ...direction,
       };
     }),
   );
   const sceneState = scene.state;
+  const scriptDirection = { look: scene.look, lighting: scene.lighting };
 
   useEffect(() => {
     if (isReadOnly) return;
-    const compiled = compileShotPrompt(shot, modelFamilyFromModelId(targetModelId));
-    const still = compileStillPrompt(shot);
+    const direction = { look: scene.look, lighting: scene.lighting };
+    const compiled = compileShotPrompt(shot, modelFamilyFromModelId(targetModelId), direction);
+    const still = compileStillPrompt(shot, direction);
     if (compiled !== data.value || still !== data.stillPrompt) {
       updateNodeData(id, { value: compiled, stillPrompt: still });
     }
-  }, [id, isReadOnly, shot, targetModelId, data.value, data.stillPrompt, updateNodeData]);
+  }, [
+    id,
+    isReadOnly,
+    shot,
+    targetModelId,
+    scene.look,
+    scene.lighting,
+    data.value,
+    data.stillPrompt,
+    updateNodeData,
+  ]);
 
   const updateShot = (patch: Partial<Shot>) => {
     const next = { ...shot, ...patch };
     updateNodeData(id, {
       shot: next,
-      value: compileShotPrompt(next, modelFamilyFromModelId(targetModelId)),
-      stillPrompt: compileStillPrompt(next),
+      value: compileShotPrompt(next, modelFamilyFromModelId(targetModelId), scriptDirection),
+      stillPrompt: compileStillPrompt(next, scriptDirection),
     });
   };
 
@@ -109,7 +128,7 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
               : "Scene was removed from the script."}
           </div>
         )}
-        <div className="grid grid-cols-[1fr_1fr_56px] gap-1">
+        <div className="grid grid-cols-[1fr_56px] gap-1">
           <select
             value={shot.framing}
             disabled={isReadOnly}
@@ -121,17 +140,7 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
               <option key={framing} value={framing}>{framing}</option>
             ))}
           </select>
-          <select
-            value={shot.cameraMove}
-            disabled={isReadOnly}
-            onChange={(event) => updateShot({ cameraMove: event.target.value as ShotCameraMove })}
-            className={`${fieldClass} rounded-md border bg-transparent px-1`}
-            aria-label="Camera move"
-          >
-            {SHOT_CAMERA_MOVES.map((move) => (
-              <option key={move} value={move}>{move}</option>
-            ))}
-          </select>
+
           <Input
             type="number"
             min={1}
@@ -140,6 +149,36 @@ const ShotNode = memo(({ id, data, isConnectable, selected }: ShotNodeProps) => 
             onChange={(event) => updateShot({ duration: Number(event.target.value) })}
             className={fieldClass}
             aria-label="Duration in seconds"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1">
+          <DirectionPicker
+            category="camera"
+            value={shot.cameraMove}
+            onChange={(cameraMove) => cameraMove && updateShot({ cameraMove: cameraMove as ShotCameraMove })}
+            noneLabel={null}
+            disabled={isReadOnly}
+          />
+          <DirectionPicker
+            category="lens"
+            value={shot.lens ?? null}
+            onChange={(lens) => updateShot({ lens: lens as Shot["lens"] })}
+            noneLabel="Any"
+            disabled={isReadOnly}
+          />
+          <DirectionPicker
+            category="look"
+            value={shot.look ?? null}
+            onChange={(look) => updateShot({ look: look as Shot["look"] })}
+            noneLabel="Script look"
+            disabled={isReadOnly}
+          />
+          <DirectionPicker
+            category="lighting"
+            value={shot.lighting ?? null}
+            onChange={(lighting) => updateShot({ lighting: lighting as Shot["lighting"] })}
+            noneLabel="Script lighting"
+            disabled={isReadOnly}
           />
         </div>
         <Textarea

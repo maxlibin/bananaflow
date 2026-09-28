@@ -1,4 +1,5 @@
 import type { TextModelOption } from "../model-options";
+import type { LensPresetId } from "../direction/presets";
 import type {
   EntityKind,
   ScriptBriefAnswers,
@@ -57,6 +58,7 @@ export type ShotPlan = {
   duration: number;
   framing: ShotFraming;
   cameraMove: ShotCameraMove;
+  lens: LensPresetId | null;
   action: string;
   setting: string;
   style: string;

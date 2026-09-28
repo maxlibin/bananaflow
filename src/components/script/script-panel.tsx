@@ -18,6 +18,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { useCanvasHost } from "../canvas-host/context";
 import { useReadOnly } from "../flow/readonly-context";
 import { useBoardStore } from "../../stores/board-store";
+import { DirectionPicker } from "../direction/direction-picker";
 import { GuidedStart } from "./guided-start";
 import { ScriptCast } from "./script-cast";
 import { ScriptDoctor } from "./script-doctor";
@@ -315,6 +316,23 @@ export function ScriptPanel({
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground">Every shot:</span>
+            <DirectionPicker
+              category="look"
+              value={data.look ?? null}
+              onChange={(look) => update({ look: look as ScriptNodeData["look"] })}
+              noneLabel="None"
+              disabled={isReadOnly}
+            />
+            <DirectionPicker
+              category="lighting"
+              value={data.lighting ?? null}
+              onChange={(lighting) => update({ lighting: lighting as ScriptNodeData["lighting"] })}
+              noneLabel="None"
+              disabled={isReadOnly}
+            />
           </div>
         </SheetHeader>
 

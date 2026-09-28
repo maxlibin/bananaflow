@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LENS_PRESET_IDS } from "../../direction/presets";
 import {
   ENTITY_KINDS,
   SHOT_CAMERA_MOVES,
@@ -79,6 +80,7 @@ export const shotsSchema = z.object({
         duration: z.number().int().positive(),
         framing: z.enum(SHOT_FRAMINGS),
         cameraMove: z.enum(SHOT_CAMERA_MOVES),
+        lens: z.enum(LENS_PRESET_IDS).nullable(),
         action: z.string(),
         setting: z.string(),
         style: z.string(),

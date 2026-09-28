@@ -4,8 +4,9 @@ import {
   compileShotPrompt,
   compileStillPrompt,
   modelFamilyFromModelId,
+  type ScriptDirection,
 } from "./compile-shot";
-import type { EntityNodeData, Shot, ShotNodeData } from "./types";
+import type { EntityNodeData, ScriptNodeData, Shot, ShotNodeData } from "./types";
 
 const SHOT_COLUMN_OFFSET = 450;
 const KEYFRAME_COLUMN_OFFSET = 900;
@@ -27,12 +28,16 @@ export type ShotGraphInput = {
 
 export type ShotGraph = { nodes: Node[]; edges: Edge[] };
 
-export function shotNodeData(shot: Shot, videoModelId: string): ShotNodeData {
+export function shotNodeData(
+  shot: Shot,
+  videoModelId: string,
+  script: ScriptDirection,
+): ShotNodeData {
   return {
     label: `Shot ${shot.order}`,
     shot,
-    value: compileShotPrompt(shot, modelFamilyFromModelId(videoModelId)),
-    stillPrompt: compileStillPrompt(shot),
+    value: compileShotPrompt(shot, modelFamilyFromModelId(videoModelId), script),
+    stillPrompt: compileStillPrompt(shot, script),
     images: [],
   };
 }
@@ -59,6 +64,12 @@ function keyframeOf(shotId: string, nodes: Node[], edges: Edge[]): Node | undefi
 // no matching plan are removed; their keyframe and video nodes stay.
 export function applyShotPlans(input: ShotGraphInput): ShotGraph {
   const scriptNodeId = input.scriptNode.id;
+  const scriptData = input.scriptNode.data as ScriptNodeData;
+  // Script nodes saved before presets have no look/lighting fields.
+  const scriptDirection: ScriptDirection = {
+    look: scriptData.look ?? null,
+    lighting: scriptData.lighting ?? null,
+  };
   const entityIdsByName = new Map(
     input.nodes
       .filter(
@@ -119,8 +130,8 @@ export function applyShotPlans(input: ShotGraphInput): ShotGraph {
     if (!sceneHash) {
       throw new Error(`Shot plan references unknown scene "${plan.sceneId}"`);
     }
-    const shot: Shot = { ...plan, scriptNodeId, sceneHash };
-    const data = shotNodeData(shot, input.videoModelId);
+    const shot: Shot = { ...plan, scriptNodeId, sceneHash, look: null, lighting: null };
+    const data = shotNodeData(shot, input.videoModelId, scriptDirection);
     const existing = existingByKey.get(shotKey(plan.sceneId, plan.order));
     if (existing) {
       updatedById.set(existing.id, {

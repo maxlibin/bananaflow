@@ -7,6 +7,8 @@ import NextImage from "next/image";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { NodeBox } from "./node-box";
+import { DirectionPicker } from "../../direction/direction-picker";
+import { getDirectionPreset, type DirectionCategory } from "../../../lib/direction/presets";
 import { ImageEditorModal } from "../image-editor-modal";
 import { useReactFlow, Handle, Position } from "@xyflow/react";
 import { useReadOnly } from "../readonly-context";
@@ -75,6 +77,19 @@ const InputNode = memo(
         updateNodeData(id, { value: newValue });
       },
       [id, updateNodeData, adjustTextareaHeight],
+    );
+
+    // Presets are written into the prompt as plain text the user can edit.
+    const insertDirection = useCallback(
+      (category: DirectionCategory, presetId: string | null) => {
+        if (!presetId) return;
+        const phrase = getDirectionPreset(category, presetId).prompt;
+        const addition = `${phrase.charAt(0).toUpperCase()}${phrase.slice(1)}.`;
+        const next = [promptText.trim(), addition].filter(Boolean).join(" ");
+        setPromptText(next);
+        updateNodeData(id, { value: next });
+      },
+      [id, promptText, updateNodeData],
     );
 
     const persistImages = useCallback(
@@ -172,6 +187,20 @@ const InputNode = memo(
             >
               {promptText.length} / 1000 suggested
             </div>
+            {!isReadOnly && (
+              <div className="mt-1.5 flex flex-wrap gap-1 px-1" data-testid="input-direction">
+                {(["camera", "lens", "look", "lighting"] as const).map((category) => (
+                  <DirectionPicker
+                    key={category}
+                    category={category}
+                    value={null}
+                    onChange={(presetId) => insertDirection(category, presetId)}
+                    noneLabel={null}
+                    disabled={false}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Divider */}
