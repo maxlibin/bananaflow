@@ -1,7 +1,9 @@
+import { S3ServiceException } from "@aws-sdk/client-s3";
 import { createId } from "@paralleldrive/cuid2";
 import { and, eq } from "drizzle-orm";
 import { boards, media as mediaTable } from "../../db/schema";
 import { adjustBoardStorage } from "../board-storage";
+import { StorageUnavailableError } from "../host/errors";
 import type { Denial, DirectUpload, HostAdapter } from "../host/types";
 
 export type SequenceActionResult<T> = { ok: true; value: T } | { ok: false; error: string; denial: Denial | null };
@@ -24,8 +26,17 @@ export async function createExportUpload(
   const decision = await host.limits.canStore(owner.userId, input.size);
   if (!decision.ok) return { ok: false, error: decision.message, denial: decision };
   const key = `${owner.userId}/sequences/${input.boardId}/${createId()}.mp4`;
-  const upload = await host.storage.createUpload({ key, contentType: "video/mp4", size: input.size });
-  return { ok: true, value: { key, upload } };
+  try {
+    const upload = await host.storage.createUpload({ key, contentType: "video/mp4", size: input.size });
+    return { ok: true, value: { key, upload } };
+  } catch (error) {
+    // Server action errors are redacted in production; return the reason.
+    if (error instanceof StorageUnavailableError) return { ok: false, error: error.message, denial: null };
+    if (error instanceof S3ServiceException) {
+      return { ok: false, error: `Storage refused the upload: ${error.name}: ${error.message}`, denial: null };
+    }
+    throw error;
+  }
 }
 
 export async function saveSequenceExport(
@@ -38,9 +49,26 @@ export async function saveSequenceExport(
   if (!input.key.startsWith(prefix) || input.key.includes("..")) {
     return { ok: false, error: `Export key ${input.key} is outside ${prefix}`, denial: null };
   }
-  const stored = await host.storage.getAssetSize(input.key);
+  let stored: number | null;
+  try {
+    stored = await host.storage.getAssetSize(input.key);
+  } catch (error) {
+    if (error instanceof S3ServiceException) {
+      return { ok: false, error: `Storage could not check the upload: ${error.name}: ${error.message}`, denial: null };
+    }
+    throw error;
+  }
   if (stored === null) return { ok: false, error: "The uploaded file was not found in storage", denial: null };
   if (stored !== input.size) return { ok: false, error: `Uploaded file is ${stored} bytes; expected ${input.size}`, denial: null };
+  const [already] = await host.db
+    .select({ id: mediaTable.id })
+    .from(mediaTable)
+    .where(eq(mediaTable.blobPath, input.key));
+  if (already) return { ok: false, error: `Export ${input.key} is already saved`, denial: null };
+  // Checked again here: several uploads issued before any save would each
+  // pass the check in createExportUpload.
+  const decision = await host.limits.canStore(owner.userId, stored);
+  if (!decision.ok) return { ok: false, error: decision.message, denial: decision };
 
   const url = host.storage.assetUrl(input.key);
   const [row] = await host.db

@@ -33,4 +33,26 @@ test("exports a clip, a silent clip and a still into one 1080x1920 MP4", async (
   expect(await video!.getDisplayHeight()).toBe(1920);
   expect(audio).not.toBeNull();
   expect(Math.abs((await input.computeDuration()) - 6)).toBeLessThan(0.1);
+  // The silent clip and the still must still contribute silence: the audio
+  // track itself lasts as long as the video.
+  expect(Math.abs((await audio!.computeDuration()) - (await video!.computeDuration()))).toBeLessThan(0.1);
+});
+
+test("trim values can be typed digit by digit", async ({ page }) => {
+  const boardId = execFileSync("npx", ["tsx", "--env-file=.env", "e2e/seed-sequence-board.mts"]).toString().trim();
+  await page.goto(`/board/${boardId}`);
+  await page.getByTestId("sequence-open-panel").click();
+  await expect(page.getByTestId("sequence-check")).toHaveText("6.0s");
+
+  const start = page.getByTestId("sequence-trim-start-0");
+  await start.fill("");
+  await start.pressSequentially("2");
+  await start.press("Enter");
+  const end = page.getByTestId("sequence-trim-end-0");
+  await end.selectText();
+  await end.pressSequentially("2.5");
+  await end.press("Enter");
+
+  await expect(end).toHaveValue("2.5");
+  await expect(page.getByTestId("sequence-check")).toHaveText("3.5s");
 });

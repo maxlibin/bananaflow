@@ -1,5 +1,11 @@
-import type { Node } from "@xyflow/react";
-import { SEQUENCE_LIMITS, type SequenceItem, type SequenceMedia } from "./types";
+import type { Edge, Node } from "@xyflow/react";
+import {
+  SEQUENCE_LIMITS,
+  SEQUENCE_OUTPUT_SIZE,
+  type SequenceAspectRatio,
+  type SequenceItem,
+  type SequenceMedia,
+} from "./types";
 
 export class InvalidSequenceEditError extends Error {
   constructor(message: string) {
@@ -127,6 +133,9 @@ export function validateSequence(
       if (media.kind !== "video") return { ok: false, reason: `${label} is no longer a clip` };
       if (media.seconds === null) return { ok: false, reason: `${label} is still loading its length` };
       const end = item.trimEnd ?? media.seconds;
+      if (item.trimStart >= end) {
+        return { ok: false, reason: `${label} starts at ${item.trimStart}s but its clip is only ${media.seconds}s long` };
+      }
       if (end > media.seconds) {
         return { ok: false, reason: `${label} ends at ${end}s but its clip is only ${media.seconds}s long` };
       }
@@ -137,4 +146,51 @@ export function validateSequence(
   if (totalSeconds < minTotalSeconds) return { ok: false, reason: `The cut is ${totalSeconds}s; it needs at least ${minTotalSeconds}s` };
   if (totalSeconds > maxTotalSeconds) return { ok: false, reason: `The cut is ${totalSeconds}s; the limit is ${maxTotalSeconds}s` };
   return { ok: true, totalSeconds };
+}
+
+export function toSequenceAspect(value: string): SequenceAspectRatio {
+  if (!(value in SEQUENCE_OUTPUT_SIZE)) {
+    throw new InvalidSequenceEditError(`Sequences cannot render at ${value}; use ${Object.keys(SEQUENCE_OUTPUT_SIZE).join(", ")}`);
+  }
+  return value as SequenceAspectRatio;
+}
+
+// Whole output frames an item occupies. Video and audio both use
+// frames / fps, so rounding never lets them drift apart across items.
+export function itemFrames(item: SequenceItem, media: SequenceMedia): number {
+  return Math.round(itemSeconds(item, media) * SEQUENCE_LIMITS.fps);
+}
+
+// A regenerated take forks into a new node; the cut follows the new take
+// and keeps the item's trims.
+export function retargetSequenceSource(
+  nodes: Node[],
+  edges: Edge[],
+  fromId: string,
+  toId: string,
+): { nodes: Node[]; edges: Edge[] } {
+  return {
+    edges: edges.map((edge) =>
+      edge.source === fromId && edge.targetHandle === "items" ? { ...edge, source: toId } : edge,
+    ),
+    nodes: nodes.map((node) => {
+      if (node.type !== "sequenceNode") return node;
+      const data = node.data as { items: SequenceItem[] };
+      if (!data.items.some((item) => item.sourceNodeId === fromId)) return node;
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          items: data.items.map((item) => (item.sourceNodeId === fromId ? { ...item, sourceNodeId: toId } : item)),
+        },
+      };
+    }),
+  };
+}
+
+// Remote (cross-origin) files ignore <a download> and would navigate away,
+// so they download through the app's own route.
+export function downloadHref(url: string, filename: string): string {
+  if (url.startsWith("/")) return url;
+  return `/api/download-asset?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`;
 }

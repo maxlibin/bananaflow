@@ -1,12 +1,50 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { useBoardStore } from "../../stores/board-store";
 import { InvalidSequenceEditError, moveItem, setHold, setTrim } from "../../lib/sequence/model";
 import type { SequenceItem, SequenceMedia } from "../../lib/sequence/types";
+
+// Keeps what the user is typing and applies it on Enter or blur, so
+// intermediate values ("2" on the way to "2.5") are not rejected.
+function SecondsField({
+  value,
+  step,
+  disabled,
+  testId,
+  onCommit,
+}: {
+  value: number | "";
+  step: number;
+  disabled: boolean;
+  testId: string;
+  onCommit: (seconds: number) => boolean;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    if (draft === String(value)) return;
+    if (!onCommit(Number(draft))) setDraft(String(value));
+  };
+  return (
+    <Input
+      type="number"
+      step={step}
+      className="h-7 w-20"
+      value={draft}
+      disabled={disabled}
+      data-testid={testId}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+    />
+  );
+}
 
 export function SequenceTimeline({
   nodeId,
@@ -21,13 +59,15 @@ export function SequenceTimeline({
   const removeEdgesByConnection = useBoardStore((state) => state.removeEdgesByConnection);
   const [error, setError] = useState<string | null>(null);
 
-  const apply = (edit: () => SequenceItem[]) => {
+  const apply = (edit: () => SequenceItem[]): boolean => {
     try {
       updateNodeData(nodeId, { items: edit() });
       setError(null);
+      return true;
     } catch (caught) {
       if (!(caught instanceof InvalidSequenceEditError)) throw caught;
       setError(caught.message);
+      return false;
     }
   };
 
@@ -48,37 +88,32 @@ export function SequenceTimeline({
             {item.kind === "video" ? (
               <>
                 <span>Clip</span>
-                <Input
-                  type="number"
-                  step={0.1}
-                  className="h-7 w-20"
+                <SecondsField
                   value={item.trimStart}
+                  step={0.1}
                   disabled={clipSeconds === null}
-                  data-testid={`sequence-trim-start-${index}`}
-                  onChange={(event) => apply(() => setTrim(items, index, Number(event.target.value), item.trimEnd, clipSeconds as number))}
+                  testId={`sequence-trim-start-${index}`}
+                  onCommit={(seconds) => apply(() => setTrim(items, index, seconds, item.trimEnd, clipSeconds as number))}
                 />
                 <span>to</span>
-                <Input
-                  type="number"
-                  step={0.1}
-                  className="h-7 w-20"
+                <SecondsField
                   value={item.trimEnd ?? clipSeconds ?? ""}
+                  step={0.1}
                   disabled={clipSeconds === null}
-                  data-testid={`sequence-trim-end-${index}`}
-                  onChange={(event) => apply(() => setTrim(items, index, item.trimStart, Number(event.target.value), clipSeconds as number))}
+                  testId={`sequence-trim-end-${index}`}
+                  onCommit={(seconds) => apply(() => setTrim(items, index, item.trimStart, seconds, clipSeconds as number))}
                 />
                 <span className="text-muted-foreground">{clipSeconds === null ? "loading…" : `of ${clipSeconds.toFixed(1)}s`}</span>
               </>
             ) : (
               <>
                 <span>Still for</span>
-                <Input
-                  type="number"
-                  step={0.5}
-                  className="h-7 w-20"
+                <SecondsField
                   value={item.holdSeconds}
-                  data-testid={`sequence-hold-${index}`}
-                  onChange={(event) => apply(() => setHold(items, index, Number(event.target.value)))}
+                  step={0.5}
+                  disabled={false}
+                  testId={`sequence-hold-${index}`}
+                  onCommit={(seconds) => apply(() => setHold(items, index, seconds))}
                 />
                 <span>s</span>
               </>

@@ -6,7 +6,7 @@ import { Button } from "../ui/button";
 import { useCanvasHost } from "../canvas-host/context";
 import { useBoardStore } from "../../stores/board-store";
 import { limitNotice } from "../../lib/host/limit-notice";
-import type { SequenceCheck } from "../../lib/sequence/model";
+import { downloadHref, type SequenceCheck } from "../../lib/sequence/model";
 import { browserCanExport, renderSequence } from "../../lib/sequence/render";
 import type { SequenceMedia, SequenceNodeData } from "../../lib/sequence/types";
 import { putWithProgress } from "../../lib/sequence/upload";
@@ -41,12 +41,22 @@ export function SequenceExport({
     void browserCanExport().then(setSupport);
   }, []);
 
-  const blocked = support && !support.ok ? support.reason : !check.ok ? check.reason : null;
+  const blocked =
+    support === null
+      ? "Checking whether this browser can export…"
+      : !support.ok
+        ? support.reason
+        : !check.ok
+          ? check.reason
+          : !boardId
+            ? "Save the board before exporting"
+            : null;
   const busy = phase.name === "rendering" || phase.name === "uploading";
 
   const uploadAndSave = async (rendered: Rendered, signal: AbortSignal) => {
     if (!boardId) throw new Error("This board has not been saved yet");
     setPhase({ name: "uploading", fraction: 0 });
+    if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
     const created = await canvasHost.actions.createExportUpload({ boardId, nodeId, size: rendered.blob.size });
     if (!created.ok) {
       if (created.denial) canvasHost.onLimit(limitNotice(created.denial));
@@ -54,6 +64,7 @@ export function SequenceExport({
       return;
     }
     await putWithProgress(created.value.upload, rendered.blob, (fraction) => setPhase({ name: "uploading", fraction }), signal);
+    if (signal.aborted) throw new DOMException("Export cancelled", "AbortError");
     const saved = await canvasHost.actions.saveSequenceExport({
       boardId,
       nodeId,
@@ -127,7 +138,7 @@ export function SequenceExport({
         </div>
       )}
       {phase.name === "done" && (
-        <a href={phase.url} download className="text-xs underline" data-testid="sequence-export-done">
+        <a href={downloadHref(phase.url, "sequence.mp4")} download className="text-xs underline" data-testid="sequence-export-done">
           Download the MP4
         </a>
       )}

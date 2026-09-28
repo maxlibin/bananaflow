@@ -1,7 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { ShotNodeData } from "../script/types";
 import { syncSequenceItems } from "./model";
-import type { SequenceAspectRatio, SequenceNodeData } from "./types";
+import type { SequenceAspectRatio, SequenceItem, SequenceNodeData } from "./types";
 
 const SEQUENCE_COLUMN_OFFSET = 1800;
 
@@ -21,10 +21,13 @@ export function assembleCut(input: {
   const shots = input.nodes
     .filter((node) => node.type === "shotNode" && (node.data as ShotNodeData).shot.scriptNodeId === scriptId)
     .sort((a, b) => (a.data as ShotNodeData).shot.order - (b.data as ShotNodeData).shot.order);
-  const videos = shots.flatMap((shot) => {
-    const targets = new Set(input.edges.filter((edge) => edge.source === shot.id).map((edge) => edge.target));
-    return input.nodes.filter((node) => node.type === "videoNode" && targets.has(node.id));
-  });
+  // One take per shot: the one already in the cut, else the newest fork.
+  const videos = shots
+    .map((shot) => {
+      const targets = new Set(input.edges.filter((edge) => edge.source === shot.id).map((edge) => edge.target));
+      return input.nodes.filter((node) => node.type === "videoNode" && targets.has(node.id));
+    })
+    .filter((takes) => takes.length > 0);
   if (videos.length === 0) {
     throw new Error("This script has no shot videos yet; break it into shots first");
   }
@@ -42,15 +45,29 @@ export function assembleCut(input: {
     } satisfies Node);
 
   const wiredSources = new Set(input.edges.filter((edge) => edge.target === sequence.id).map((edge) => edge.source));
-  const addedEdges: Edge[] = videos
-    .filter((video) => !wiredSources.has(video.id))
-    .map((video) => ({ id: `edge-${input.createId()}`, source: video.id, target: sequence.id, targetHandle: "items" }));
-  const connected = [
-    ...input.nodes.filter((node) => wiredSources.has(node.id)),
-    ...videos.filter((video) => !wiredSources.has(video.id)),
-  ];
+  const chosen = videos.map((takes) => takes.find((take) => wiredSources.has(take.id)) ?? takes[takes.length - 1]);
+  const missing = chosen.filter((video) => !wiredSources.has(video.id));
+  const addedEdges: Edge[] = missing.map((video) => ({
+    id: `edge-${input.createId()}`,
+    source: video.id,
+    target: sequence.id,
+    targetHandle: "items",
+  }));
+  const connected = [...input.nodes.filter((node) => wiredSources.has(node.id)), ...missing];
   const data = sequence.data as ScriptSequenceData;
-  const updated: Node = { ...sequence, data: { ...data, items: syncSequenceItems(data.items, connected) } };
+  let items = syncSequenceItems(data.items, connected);
+  // syncSequenceItems appends; move each new shot next to its story neighbours.
+  for (const video of missing) {
+    const storyIndex = chosen.indexOf(video);
+    const item = items.find((candidate) => candidate.sourceNodeId === video.id) as SequenceItem;
+    const rest = items.filter((candidate) => candidate !== item);
+    const positionOf = (neighbour: Node) => rest.findIndex((candidate) => candidate.sourceNodeId === neighbour.id);
+    const before = chosen.slice(0, storyIndex).reverse().map(positionOf).find((position) => position >= 0);
+    const after = chosen.slice(storyIndex + 1).map(positionOf).find((position) => position >= 0);
+    const at = before !== undefined ? before + 1 : after ?? rest.length;
+    items = [...rest.slice(0, at), item, ...rest.slice(at)];
+  }
+  const updated: Node = { ...sequence, data: { ...data, items } };
 
   const nodes = existing
     ? input.nodes.map((node) => (node.id === updated.id ? updated : node))

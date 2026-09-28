@@ -92,3 +92,46 @@ test("saveSequenceExport records the export as board media", async () => {
   assert.equal(row.nodeId, "seq");
   assert.equal(row.fileSize, 3);
 });
+
+test("saveSequenceExport re-checks the quota, so several pre-issued uploads cannot exceed it", async () => {
+  const key = `${USER}/sequences/${boardId}/big.mp4`;
+  await storage.uploadAsset({ key, body: Buffer.alloc(QUOTA_BYTES + 1), contentType: "video/mp4" });
+  const saved = await saveSequenceExport(host, { boardId, nodeId: "seq", key, size: QUOTA_BYTES + 1, durationSeconds: 1, width: 1080, height: 1920 });
+  assert.equal(saved.ok, false);
+  if (saved.ok) return;
+  assert.equal(saved.denial?.status, 403);
+  const rows = await db.select().from(media).where(eq(media.blobPath, key));
+  assert.equal(rows.length, 0);
+});
+
+test("saving the same export twice records it once", async () => {
+  const key = `${USER}/sequences/${boardId}/twice.mp4`;
+  await storage.uploadAsset({ key, body: Buffer.from("abc"), contentType: "video/mp4" });
+  const input = { boardId, nodeId: "seq", key, size: 3, durationSeconds: 1, width: 1080, height: 1920 };
+  assert.equal((await saveSequenceExport(host, input)).ok, true);
+  assert.deepEqual(await saveSequenceExport(host, input), {
+    ok: false,
+    error: `Export ${key} is already saved`,
+    denial: null,
+  });
+  const rows = await db.select().from(media).where(eq(media.blobPath, key));
+  assert.equal(rows.length, 1);
+});
+
+test("an unavailable storage backend comes back as a readable error, not a thrown one", async () => {
+  const { StorageUnavailableError } = await import("../src/lib/host/errors.ts");
+  const noUploads: HostAdapter = {
+    ...host,
+    storage: {
+      ...storage,
+      async createUpload() {
+        throw new StorageUnavailableError("Direct uploads need R2");
+      },
+    },
+  };
+  assert.deepEqual(await createExportUpload(noUploads, { boardId, nodeId: "seq", size: 3 }), {
+    ok: false,
+    error: "Direct uploads need R2",
+    denial: null,
+  });
+});

@@ -21,7 +21,8 @@ import { applyShotPlans } from "../lib/script/shot-graph";
 import { assembleCut as assembleCutGraph } from "../lib/sequence/assemble-cut";
 import { buildStructureSkeleton } from "../lib/script/structures";
 import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
-import type { SequenceAspectRatio, SequenceNodeData } from "../lib/sequence/types";
+import type { SequenceNodeData } from "../lib/sequence/types";
+import { retargetSequenceSource, toSequenceAspect } from "../lib/sequence/model";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -1356,7 +1357,7 @@ function createBoardStore({
             scriptNode,
             nodes: state.nodes,
             edges: state.edges,
-            aspectRatio: (scriptNode.data as ScriptNodeData).aspectRatio as SequenceAspectRatio,
+            aspectRatio: toSequenceAspect((scriptNode.data as ScriptNodeData).aspectRatio),
             createId,
           });
           const nextNodes = attachCallbacksToNodes(graph.nodes);
@@ -1482,9 +1483,17 @@ function createBoardStore({
               id: `${edge.source}-${newNodeId}-${edge.targetHandle ?? "default"}-${createId()}`,
               target: newNodeId,
             }));
-            const nextEdges = [...current.edges, ...cloneEdges];
-            scheduleSaveDebounced(current.nodes, nextEdges);
-            return { ...current, edges: nextEdges };
+            // The regenerated take replaces the old one in any Sequence.
+            const retargeted = retargetSequenceSource(
+              current.nodes,
+              [...current.edges, ...cloneEdges],
+              sourceNodeId,
+              newNodeId,
+            );
+            const nextNodes = attachCallbacksToNodes(retargeted.nodes);
+            const nextEdges = retargeted.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+            scheduleSaveDebounced(nextNodes, nextEdges);
+            return { ...current, nodes: nextNodes, edges: nextEdges };
           });
         }
 

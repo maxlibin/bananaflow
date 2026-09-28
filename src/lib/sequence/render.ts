@@ -13,7 +13,7 @@ import {
   canEncode,
   canEncodeAudio,
 } from "mediabunny";
-import { itemSeconds } from "./model";
+import { itemFrames } from "./model";
 import { SEQUENCE_LIMITS, SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "./types";
 
 const SAMPLE_RATE = 48_000;
@@ -39,9 +39,9 @@ export async function browserCanExport(): Promise<{ ok: true } | { ok: false; re
 
 // Same-origin fetch: local uploads are app-relative; remote assets go through
 // the download-asset route so storage CORS never matters.
-async function fetchSource(url: string, label: string): Promise<Blob> {
+async function fetchSource(url: string, label: string, signal: AbortSignal): Promise<Blob> {
   const target = url.startsWith("/") ? url : `/api/download-asset?url=${encodeURIComponent(url)}&filename=source`;
-  const response = await fetch(target);
+  const response = await fetch(target, { signal });
   if (!response.ok) {
     throw new SequenceRenderError(`${label}: download failed with HTTP ${response.status} (${url})`);
   }
@@ -71,6 +71,15 @@ function sliceAudio(buffer: AudioBuffer, bufferStart: number, from: number, to: 
     sliced.copyToChannel(buffer.getChannelData(channel).subarray(startFrame, endFrame), channel);
   }
   return sliced;
+}
+
+// Silence in the same format as `like`, so it can be joined to its clip.
+function silenceLike(like: AudioBuffer, seconds: number): AudioBuffer {
+  return new AudioBuffer({
+    length: Math.max(1, Math.round(seconds * like.sampleRate)),
+    numberOfChannels: like.numberOfChannels,
+    sampleRate: like.sampleRate,
+  });
 }
 
 function concatAudio(slices: AudioBuffer[], label: string): AudioBuffer {
@@ -133,8 +142,9 @@ export async function renderSequence(input: {
   output.addAudioTrack(audioSource);
   await output.start();
 
-  const durations = input.data.items.map((item) => itemSeconds(item, input.mediaById[item.sourceNodeId]));
-  const totalSeconds = durations.reduce((sum, seconds) => sum + seconds, 0);
+  // Each item lasts a whole number of frames; audio uses the same length.
+  const frameCounts = input.data.items.map((item) => itemFrames(item, input.mediaById[item.sourceNodeId]));
+  const totalSeconds = frameCounts.reduce((sum, frames) => sum + frames, 0) * frameDuration;
   let offset = 0;
 
   const drawFitted = (source: CanvasImageSource, sourceWidth: number, sourceHeight: number) => {
@@ -150,9 +160,9 @@ export async function renderSequence(input: {
     for (const [index, item] of input.data.items.entries()) {
       const label = `Item ${index + 1}`;
       const media = input.mediaById[item.sourceNodeId];
-      const seconds = durations[index];
-      const frames = Math.round(seconds * SEQUENCE_LIMITS.fps);
-      const blob = await fetchSource(media.url, label);
+      const frames = frameCounts[index];
+      const seconds = frames * frameDuration;
+      const blob = await fetchSource(media.url, label, input.signal);
 
       if (item.kind === "image") {
         const bitmap = await createImageBitmap(blob).catch((error: Error) => {
@@ -193,6 +203,13 @@ export async function renderSequence(input: {
           const slices: AudioBuffer[] = [];
           let covered = item.trimStart;
           for await (const wrapped of new AudioBufferSink(audioTrack).buffers(item.trimStart, end)) {
+            // A gap before this packet (late first packet, dropped packets)
+            // becomes silence, so later audio does not slide earlier.
+            const gap = Math.min(wrapped.timestamp, end) - covered;
+            if (gap > 1 / SAMPLE_RATE) {
+              slices.push(silenceLike(wrapped.buffer, gap));
+              covered += gap;
+            }
             const sliced = sliceAudio(wrapped.buffer, wrapped.timestamp, covered, end);
             if (!sliced) continue;
             slices.push(sliced);

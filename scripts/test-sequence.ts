@@ -125,3 +125,91 @@ test("re-running assembleCut adds missing shots and keeps existing trims", () =>
     { sourceNodeId: "vb", kind: "video", trimStart: 0, trimEnd: null },
   ]);
 });
+
+// Final-review fixes.
+import {
+  downloadHref,
+  itemFrames,
+  retargetSequenceSource,
+  toSequenceAspect,
+} from "../src/lib/sequence/model.ts";
+import { SEQUENCE_OUTPUT_SIZE } from "../src/lib/sequence/types.ts";
+
+test("every script aspect ratio has a sequence output size", () => {
+  assert.deepEqual(SEQUENCE_OUTPUT_SIZE["4:5"], { width: 1080, height: 1350 });
+  for (const aspect of ["9:16", "16:9", "1:1", "4:5"]) {
+    assert.equal(toSequenceAspect(aspect), aspect);
+  }
+  assert.throws(() => toSequenceAspect("21:9"), InvalidSequenceEditError);
+});
+
+test("validateSequence names a trim that starts past a shortened clip", () => {
+  const items: SequenceItem[] = [{ sourceNodeId: "v1", kind: "video", trimStart: 5, trimEnd: null }];
+  const media = { v1: { kind: "video" as const, url: "u", seconds: 4 } };
+  assert.deepEqual(validateSequence(items, media), {
+    ok: false,
+    reason: "Item 1 starts at 5s but its clip is only 4s long",
+  });
+});
+
+test("item length is quantised to whole frames so audio and video stay in step", () => {
+  const clip: SequenceItem = { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null };
+  assert.equal(itemFrames(clip, { kind: "video", url: "u", seconds: 5.042 }), 151);
+  const still: SequenceItem = { sourceNodeId: "o1", kind: "image", holdSeconds: 2.25 };
+  assert.equal(itemFrames(still, { kind: "image", url: "u" }), 68);
+});
+
+test("regenerating a take moves the sequence item and edge to the new node", () => {
+  const nodes = [
+    node("seq", "sequenceNode", {
+      label: "Sequence",
+      aspectRatio: "9:16",
+      items: [{ sourceNodeId: "old", kind: "video", trimStart: 1, trimEnd: 3 }],
+      lastExport: null,
+    }),
+  ];
+  const edges: Edge[] = [
+    { id: "e1", source: "old", target: "seq", targetHandle: "items" },
+    { id: "e2", source: "shot", target: "old", targetHandle: "input" },
+  ];
+  const graph = retargetSequenceSource(nodes, edges, "old", "new");
+  assert.deepEqual(graph.edges.map((edge) => [edge.source, edge.target]), [["new", "seq"], ["shot", "old"]]);
+  assert.deepEqual((graph.nodes[0].data as { items: SequenceItem[] }).items, [
+    { sourceNodeId: "new", kind: "video", trimStart: 1, trimEnd: 3 },
+  ]);
+});
+
+test("assembleCut takes one video per shot and inserts new shots in story order", () => {
+  const sequenceNode = node("seq", "sequenceNode", {
+    label: "Sequence",
+    aspectRatio: "9:16",
+    items: [
+      { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3 },
+      { sourceNodeId: "vc", kind: "video", trimStart: 0, trimEnd: null },
+    ],
+    lastExport: null,
+    scriptNodeId: "s1",
+  });
+  // Shot 1 was regenerated: "va" (wired) and its fork "va2" both hang off it.
+  const nodes = [script, shot("sh1", 1), shot("sh2", 2), shot("sh3", 3), video("va"), video("va2"), video("vb"), video("vc"), sequenceNode];
+  const edges = [
+    wire("sh1", "va", "input"),
+    wire("sh1", "va2", "input"),
+    wire("sh2", "vb", "input"),
+    wire("sh3", "vc", "input"),
+    wire("va", "seq", "items"),
+    wire("vc", "seq", "items"),
+  ];
+  const graph = assembleCut({ scriptNode: script, nodes, edges, aspectRatio: "9:16", createId: () => "new" });
+  const items = (graph.nodes.find((candidate) => candidate.id === "seq")!.data as { items: SequenceItem[] }).items;
+  assert.deepEqual(items.map((item) => item.sourceNodeId), ["va", "vb", "vc"]);
+  assert.equal(graph.edges.filter((edge) => edge.target === "seq").length, 3);
+});
+
+test("downloads of remote exports go through the app's download route", () => {
+  assert.equal(
+    downloadHref("https://pub.r2.dev/u/sequences/b/x.mp4", "sequence.mp4"),
+    "/api/download-asset?url=https%3A%2F%2Fpub.r2.dev%2Fu%2Fsequences%2Fb%2Fx.mp4&filename=sequence.mp4",
+  );
+  assert.equal(downloadHref("/uploads/local/sequences/b/x.mp4", "sequence.mp4"), "/uploads/local/sequences/b/x.mp4");
+});

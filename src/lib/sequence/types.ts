@@ -1,4 +1,4 @@
-export type SequenceAspectRatio = "9:16" | "16:9" | "1:1";
+export type SequenceAspectRatio = "9:16" | "16:9" | "1:1" | "4:5";
 
 export type SequenceItem =
   | { sourceNodeId: string; kind: "video"; trimStart: number; trimEnd: number | null }
@@ -23,6 +23,7 @@ export const SEQUENCE_OUTPUT_SIZE: Record<SequenceAspectRatio, { width: number; 
   "9:16": { width: 1080, height: 1920 },
   "16:9": { width: 1920, height: 1080 },
   "1:1": { width: 1080, height: 1080 },
+  "4:5": { width: 1080, height: 1350 },
 };
 
 export const SEQUENCE_LIMITS = {

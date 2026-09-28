@@ -8,10 +8,10 @@ import { Button } from "../../ui/button";
 import { NodeBox } from "./node-box";
 import { SequencePanel } from "../../sequence/sequence-panel";
 import { useBoardStore } from "../../../stores/board-store";
-import { sourceMedia, syncSequenceItems } from "../../../lib/sequence/model";
+import { downloadHref, sourceMedia, syncSequenceItems } from "../../../lib/sequence/model";
 import type { SequenceAspectRatio, SequenceNodeData } from "../../../lib/sequence/types";
 
-const ASPECTS: SequenceAspectRatio[] = ["9:16", "16:9", "1:1"];
+const ASPECTS: SequenceAspectRatio[] = ["9:16", "16:9", "1:1", "4:5"];
 
 interface SequenceNodeProps {
   id: string;
@@ -95,7 +95,7 @@ const SequenceNode = memo(({ id, data, isConnectable, selected }: SequenceNodePr
           {synced.length} item{synced.length === 1 ? "" : "s"}
         </div>
         {data.lastExport && (
-          <a href={data.lastExport.url} download className="text-xs underline" data-testid="sequence-last-export">
+          <a href={downloadHref(data.lastExport.url, "sequence.mp4")} download className="text-xs underline" data-testid="sequence-last-export">
             Download last export
           </a>
         )}
