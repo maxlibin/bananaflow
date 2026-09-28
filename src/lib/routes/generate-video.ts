@@ -6,8 +6,14 @@ import type { HostAdapter } from "../host/types";
 import { getProvider } from "../providers";
 import type { VideoTaskSpec } from "../providers/types";
 import { buildReferenceImages } from "../reference-images";
-import type { VideoModelSettings } from "../video-models";
-import { InvalidVideoSettingsError, resolveVideoSettings } from "../video-settings";
+import type { VideoModelSettings, VideoShot } from "../video-models";
+import {
+  InvalidVideoInputError,
+  InvalidVideoSettingsError,
+  checkLastFrame,
+  resolveVideoSettings,
+  resolveVideoShots,
+} from "../video-settings";
 import {
   completeVideoJob,
   createVideoJob,
@@ -35,6 +41,8 @@ export function createGenerateVideoRoute(host: HostAdapter) {
           images?: Array<{ imageUrl: string; blobPath?: string }>;
           model?: string;
           settings?: Partial<VideoModelSettings>;
+          lastFrame?: { imageUrl: string; blobPath?: string } | null;
+          shots?: unknown;
           previousBlobPath?: string | null;
           previousSize?: number | null;
           parentMediaId?: string | null;
@@ -87,17 +95,30 @@ export function createGenerateVideoRoute(host: HostAdapter) {
 
     // Billing and the provider request both read `settings`, so the price
     // always matches what the provider is asked to generate.
+    const lastFrameUrl =
+      body.lastFrame && typeof body.lastFrame.imageUrl === "string" && body.lastFrame.imageUrl.length > 0
+        ? body.lastFrame.imageUrl
+        : null;
+
     let settings: Partial<VideoModelSettings>;
+    let shots: VideoShot[] | null;
     let spec: VideoTaskSpec;
     try {
       settings = resolveVideoSettings(model, modelConfig.settings, requestedSettings);
+      shots = resolveVideoShots(model, modelConfig.settings, body.shots);
+      if (lastFrameUrl) {
+        checkLastFrame(model, modelConfig.settings, { firstFrames: supportedImages.length, shots });
+      }
       spec = provider.describeVideoTask({
         model,
         settings,
+        shots,
         hasImage: supportedImages.length > 0,
       });
     } catch (error) {
-      if (!(error instanceof InvalidVideoSettingsError)) throw error;
+      if (!(error instanceof InvalidVideoSettingsError) && !(error instanceof InvalidVideoInputError)) {
+        throw error;
+      }
       return NextResponse.json(
         { success: false, error: error.message },
         { status: 400 },
@@ -214,6 +235,8 @@ export function createGenerateVideoRoute(host: HostAdapter) {
         prompt,
         referenceImages: buildReferenceImages(host, supportedImages.map((i) => i.imageUrl)),
         settings,
+        lastFrame: lastFrameUrl ? buildReferenceImages(host, [lastFrameUrl])[0] : null,
+        shots,
         callBackUrl,
         secret: providerSecret,
       });

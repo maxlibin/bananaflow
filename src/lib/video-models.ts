@@ -18,6 +18,9 @@ export interface VideoModelSettings {
 }
 
 
+// One shot of a multi-shot clip; `seconds` is a whole number.
+export type VideoShot = { prompt: string; seconds: number };
+
 export const DEFAULT_VIDEO_MODEL_SETTINGS: VideoModelSettings = {
   duration: "5",
   nFrames: "10",

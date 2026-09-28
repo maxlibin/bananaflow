@@ -127,6 +127,10 @@ async function createVideoTask(input: VideoTaskInput): Promise<TaskStart> {
     const { bytes, contentType } = await reference.fetchBytes();
     instance.image = { bytesBase64Encoded: bytes.toString("base64"), mimeType: contentType };
   }
+  if (input.lastFrame) {
+    const { bytes, contentType } = await input.lastFrame.fetchBytes();
+    instance.lastFrame = { bytesBase64Encoded: bytes.toString("base64"), mimeType: contentType };
+  }
   const parameters: Record<string, unknown> = {
     aspectRatio: typeof input.settings.aspectRatio === "string" ? input.settings.aspectRatio : "16:9",
     durationSeconds: Number(input.settings.duration ?? 8),

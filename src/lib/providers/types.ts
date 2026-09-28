@@ -1,4 +1,4 @@
-import type { VideoModelSettings } from "../video-models";
+import type { VideoModelSettings, VideoShot } from "../video-models";
 
 // Providers are supplied by the host (see HostAdapter.providers), so the id
 // space is open: the built-in adapters use "openai" and "google", and a
@@ -56,6 +56,10 @@ export type VideoTaskInput = {
   prompt: string;
   referenceImages: ReferenceImage[];
   settings: Partial<VideoModelSettings>;
+  // The image the clip ends on; only for models with `supportsLastFrame`.
+  lastFrame: ReferenceImage | null;
+  // Checked by `resolveVideoShots`; null for a single-shot clip.
+  shots: VideoShot[] | null;
   callBackUrl: string | null;
   secret: string;
 };
@@ -88,6 +92,7 @@ export type Provider = {
   describeVideoTask(input: {
     model: string;
     settings: Partial<VideoModelSettings>;
+    shots: VideoShot[] | null;
     hasImage: boolean;
   }): VideoTaskSpec;
   createVideoTask(input: VideoTaskInput): Promise<TaskStart>;

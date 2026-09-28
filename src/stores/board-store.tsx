@@ -15,7 +15,7 @@ import { createStore, type StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { createId } from "@paralleldrive/cuid2";
 
-import type { VideoModelSettings } from "../lib/video-models";
+import type { VideoModelSettings, VideoShot } from "../lib/video-models";
 import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
 import { applyShotPlans } from "../lib/script/shot-graph";
 import { buildStructureSkeleton } from "../lib/script/structures";
@@ -246,6 +246,8 @@ interface BoardState {
       }>;
       model?: string;
       settings?: Partial<VideoModelSettings>;
+      lastFrame?: { imageUrl: string; blobPath?: string } | null;
+      shots?: VideoShot[] | null;
     },
     opts?: {
       parentMediaId?: string;
@@ -1835,6 +1837,8 @@ function createBoardStore({
               images,
               model: connectedData?.model || host.models.video[0]?.value || "",
               settings,
+              lastFrame: connectedData?.lastFrame ?? null,
+              shots: connectedData?.shots ?? null,
               previousBlobPath,
               previousSize,
               parentMediaId: opts?.parentMediaId,

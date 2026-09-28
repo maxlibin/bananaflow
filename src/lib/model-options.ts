@@ -46,6 +46,17 @@ export type VideoSettingOptions = {
   fixedLensOptions?: boolean[];
   generateAudioOptions?: boolean[];
   removeWatermarkOptions?: boolean[];
+  // The model can end the clip on a second image (first-and-last-frame mode).
+  supportsLastFrame?: boolean;
+  // Several shots in one clip, each with its own prompt and length.
+  multiShot?: VideoMultiShotOptions;
+};
+
+export type VideoMultiShotOptions = {
+  maxShots: number;
+  shotSeconds: [number, number];
+  totalSeconds: [number, number];
+  promptChars: number;
 };
 
 export type CanvasModels = {
@@ -106,6 +117,7 @@ export const VEO_SETTINGS: VideoSettingOptions = {
   durations: ["4", "6", "8"],
   aspectRatios: ["16:9", "9:16"],
   resolutions: ["720p", "1080p"],
+  supportsLastFrame: true,
 };
 
 export const SORA_SETTINGS: VideoSettingOptions = {

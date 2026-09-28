@@ -1,5 +1,5 @@
 import type { VideoSettingOptions } from "./model-options";
-import type { VideoModelSettings } from "./video-models";
+import type { VideoModelSettings, VideoShot } from "./video-models";
 
 export class InvalidVideoSettingsError extends Error {
   constructor(
@@ -10,6 +10,14 @@ export class InvalidVideoSettingsError extends Error {
   ) {
     super(`${field} ${JSON.stringify(value)} is not available for ${model}; allowed: ${allowed}`);
     this.name = "InvalidVideoSettingsError";
+  }
+}
+
+// A request whose inputs the model cannot take (shots, frames).
+export class InvalidVideoInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidVideoInputError";
   }
 }
 
@@ -92,4 +100,64 @@ export function settingSeconds(
     throw new InvalidVideoSettingsError(model, field, value, "a whole number of seconds");
   }
   return seconds;
+}
+
+/**
+ * Checks a multi-shot request against the model's limits. `shots` comes
+ * straight from the request body; null means a single-shot clip.
+ */
+export function resolveVideoShots(
+  model: string,
+  options: VideoSettingOptions,
+  shots: unknown,
+): VideoShot[] | null {
+  if (shots === undefined || shots === null) return null;
+  const limits = options.multiShot;
+  if (!limits) throw new InvalidVideoInputError(`${model} does not support multi-shot clips`);
+  if (!Array.isArray(shots) || shots.length < 2 || shots.length > limits.maxShots) {
+    throw new InvalidVideoInputError(`${model} takes 2-${limits.maxShots} shots per clip`);
+  }
+  const [minSeconds, maxSeconds] = limits.shotSeconds;
+  const resolved = shots.map((shot: unknown, index): VideoShot => {
+    const { prompt, seconds } = (shot ?? {}) as { prompt?: unknown; seconds?: unknown };
+    if (typeof prompt !== "string" || prompt.trim().length === 0 || prompt.length > limits.promptChars) {
+      throw new InvalidVideoInputError(
+        `Shot ${index + 1} needs a prompt of 1-${limits.promptChars} characters for ${model}`,
+      );
+    }
+    if (typeof seconds !== "number" || !Number.isInteger(seconds) || seconds < minSeconds || seconds > maxSeconds) {
+      throw new InvalidVideoInputError(
+        `Shot ${index + 1} must last ${minSeconds}-${maxSeconds} whole seconds on ${model}; got ${JSON.stringify(seconds)}`,
+      );
+    }
+    return { prompt: prompt.trim(), seconds };
+  });
+  const total = resolved.reduce((sum, shot) => sum + shot.seconds, 0);
+  const [minTotal, maxTotal] = limits.totalSeconds;
+  if (total < minTotal || total > maxTotal) {
+    throw new InvalidVideoInputError(`${model} clips last ${minTotal}-${maxTotal}s in total; these shots add up to ${total}s`);
+  }
+  return resolved;
+}
+
+/**
+ * A last frame closes a first-and-last-frame clip, so it needs exactly one
+ * first-frame image and cannot be combined with multi-shot.
+ */
+export function checkLastFrame(
+  model: string,
+  options: VideoSettingOptions,
+  input: { firstFrames: number; shots: VideoShot[] | null },
+): void {
+  if (!options.supportsLastFrame) {
+    throw new InvalidVideoInputError(`${model} cannot end on a last-frame image`);
+  }
+  if (input.firstFrames !== 1) {
+    throw new InvalidVideoInputError(
+      `A last frame needs exactly one first-frame image; ${input.firstFrames} images are connected`,
+    );
+  }
+  if (input.shots) {
+    throw new InvalidVideoInputError("A last frame cannot be combined with multi-shot");
+  }
 }

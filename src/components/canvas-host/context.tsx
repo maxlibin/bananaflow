@@ -10,7 +10,7 @@ import type * as userPreferences from "../../lib/actions/user-preferences";
 import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
 import type { HostAdapter } from "../../lib/host/types";
-import type { VideoModelSettings } from "../../lib/video-models";
+import type { VideoModelSettings, VideoShot } from "../../lib/video-models";
 import type { CanvasModels } from "../../lib/model-options";
 import type { ScriptAssistant } from "../../lib/script/assistant";
 import type { DirectionSamples } from "../../lib/direction/presets";
@@ -48,7 +48,13 @@ export type CostPreviewInput =
   | { kind: "image"; model: string; count: number }
   // The node's settings as sent to /api/generate-video; the host prices them
   // the way the server will (resolveVideoSettings + describeVideoTask).
-  | { kind: "video"; model: string; settings: Partial<VideoModelSettings>; hasImage: boolean }
+  | {
+      kind: "video";
+      model: string;
+      settings: Partial<VideoModelSettings>;
+      shots: VideoShot[] | null;
+      hasImage: boolean;
+    }
   | { kind: "advanced"; op: AdvancedOpId }
   | { kind: "bulk"; model: string; count: number };
 
