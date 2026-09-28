@@ -33,7 +33,7 @@ Single Next.js 16 app that is also an npm package (`bananaflow`) consumed by the
 
 ## Generation pipeline
 
-1. Route factory: `host.auth.getUserId()`, validate body, look the model up in `host.models.image` / `host.models.video`, resolve its provider with `getProvider(host, info.provider)`. Video settings go through `resolveVideoSettings` (only the fields in the model's `settings` options, each checked against its allowed values; 400 otherwise), and `beforeGenerate` bills the provider's `describeVideoTask` of those same settings.
+1. Route factory: `host.auth.getUserId()`, validate body, look the model up in `host.models.image` / `host.models.video`, resolve its provider with `getProvider(host, info.provider)`. Video settings go through `resolveVideoSettings` (only the fields in the model's `settings` options, each checked against its allowed values; 400 otherwise), and `beforeGenerate` bills the provider's `describeVideoTask` of those same settings. Optional `shots` (multi-shot, from connected Shot nodes when the model's options have `multiShot`) and `lastFrame` (the video node's `lastFrame` handle, when `supportsLastFrame`) are checked by `resolveVideoShots` / `checkLastFrame` and passed to the provider; billing uses the shots' total length.
 2. `host.keys.resolveProviderKey(userId, info.provider)`; `host.callbacks.publicBaseUrl()` (null means no webhook).
 3. `host.policy.beforeGenerate(...)` (no-op locally, returns a `Denial` in hosted products).
 4. Insert the job row, `provider.createImageTask(...)`. Reference images are built by `buildReferenceImages(host, urls)`: a public URL for URL-taking providers, lazy bytes (via `host.storage.resolveAssetUrl`) for the rest.

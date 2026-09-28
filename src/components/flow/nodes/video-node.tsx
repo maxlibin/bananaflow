@@ -21,6 +21,7 @@ import {
 import { Slider } from "../../ui/slider";
 import { ModelCombobox } from "../model-combobox";
 import { NodeBox } from "./node-box";
+import type { ShotNodeData } from "../../../lib/script/types";
 import { mergeConnectedImages, type ConnectedImage } from "./connected-images";
 import {
   Video,
@@ -37,6 +38,7 @@ import {
   DEFAULT_VIDEO_MODEL_SETTINGS,
 
   type VideoModelSettings,
+  type VideoShot,
 } from "../../../lib/video-models";
 import { useBoardStore } from "../../../stores/board-store";
 import { useCanvasHost } from "../../canvas-host/context";
@@ -117,12 +119,15 @@ interface VideoNodeProps {
         }>;
         model?: string;
         settings?: Partial<VideoModelSettings>;
+        lastFrame?: { imageUrl: string; blobPath?: string } | null;
+        shots?: VideoShot[] | null;
       }
     ) => void;
     onCancelGenerate?: (nodeId: string) => void;
     onCreateNode?: (nodeType: string) => void;
     selectedModel?: string;
     modelSettings?: Partial<VideoModelSettings>;
+    multiShot?: boolean;
   };
   isConnectable?: boolean;
   selected?: boolean;
@@ -141,6 +146,8 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   const [imageConnectionIds, setImageConnectionIds] = useState<string[]>([]);
   const [promptConnectionIds, setPromptConnectionIds] = useState<string[]>([]);
   const [inputConnectionIds, setInputConnectionIds] = useState<string[]>([]);
+  const [lastFrameConnectionIds, setLastFrameConnectionIds] = useState<string[]>([]);
+  const [multiShot, setMultiShot] = useState(data.multiShot === true);
   const [modelSettings, setModelSettings] = useState<VideoModelSettings>(() => {
     const savedSettings =
       data.modelSettings && typeof data.modelSettings === "object"
@@ -157,10 +164,15 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     prompt: string;
     imagesFromImages: ConnectedImage[];
     imagesFromInput: ConnectedImage[];
+    lastFrame: ConnectedImage | null;
+    // One shot per connected Shot node, in story order.
+    shotsFromInput: VideoShot[];
   }>({
     prompt: "",
     imagesFromImages: [],
     imagesFromInput: [],
+    lastFrame: null,
+    shotsFromInput: [],
   });
   const connectedData = useMemo(
     () => ({
@@ -290,6 +302,32 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
             imagesFromImages: imageData,
           };
         });
+      } else if (handleId === "lastFrame") {
+        const node = connectedIds.length ? getNodeById(connectedIds[0]) : undefined;
+        const payload = (node?.data ?? {}) as {
+          imageUrl?: string;
+          blobPath?: string;
+          fileName?: string;
+          result?: { imageUrl?: string; blobPath?: string; fileName?: string };
+          images?: Array<{ imageUrl: string; blobPath?: string; fileName?: string }>;
+        };
+        const image = payload.imageUrl
+          ? payload
+          : payload.result?.imageUrl
+            ? payload.result
+            : payload.images?.[0];
+        const lastFrame: ConnectedImage | null =
+          node && image?.imageUrl
+            ? {
+                nodeId: node.id,
+                imageUrl: image.imageUrl,
+                fileName: image.fileName,
+                blobPath: image.blobPath,
+              }
+            : null;
+        setConnections((prev) =>
+          prev.lastFrame?.imageUrl === lastFrame?.imageUrl ? prev : { ...prev, lastFrame },
+        );
       } else if (handleId === "prompt") {
         const promptNode = connectedIds
           .map((nodeId) => getNodeById(nodeId))
@@ -317,9 +355,10 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
           setConnections((prev) => {
             const noImages = prev.imagesFromInput.length === 0;
             const noPrompt = !prev.prompt;
-            return noImages && noPrompt
+            const noShots = prev.shotsFromInput.length === 0;
+            return noImages && noPrompt && noShots
               ? prev
-              : { ...prev, imagesFromInput: [], prompt: "" };
+              : { ...prev, imagesFromInput: [], prompt: "", shotsFromInput: [] };
           });
           return;
         }
@@ -362,7 +401,14 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
           }
         }
 
+        const shots: VideoShot[] = connectedNodes
+          .filter((node) => node.type === "shotNode")
+          .map((node) => node.data as ShotNodeData)
+          .sort((a, b) => a.shot.order - b.shot.order)
+          .map((shotData) => ({ prompt: shotData.value, seconds: shotData.shot.duration }));
+
         setConnections((prev) => {
+          const shotsChanged = JSON.stringify(prev.shotsFromInput) !== JSON.stringify(shots);
           const promptChanged = prev.prompt !== promptText;
           const prevImages = prev.imagesFromInput || [];
           const imagesChanged =
@@ -377,11 +423,12 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
                 p.blobPath !== n.blobPath
               );
             });
-          if (!promptChanged && !imagesChanged) return prev;
+          if (!promptChanged && !imagesChanged && !shotsChanged) return prev;
           return {
             ...prev,
             prompt: promptText,
             imagesFromInput: aggregatedImages,
+            shotsFromInput: shots,
           };
         });
       }
@@ -397,6 +444,8 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
         setPromptConnectionIds(ids);
       } else if (handleId === "input") {
         setInputConnectionIds(ids);
+      } else if (handleId === "lastFrame") {
+        setLastFrameConnectionIds(ids);
       }
       refreshConnectedData(handleId, ids);
     },
@@ -414,6 +463,9 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     if (inputConnectionIds.length > 0) {
       refreshConnectedData("input", inputConnectionIds);
     }
+    if (lastFrameConnectionIds.length > 0) {
+      refreshConnectedData("lastFrame", lastFrameConnectionIds);
+    }
   }, [nodesSnapshot, edgesSnapshot, refreshConnectedData, id]);
 
   // Separate effect for connection ID changes
@@ -427,15 +479,23 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     if (inputConnectionIds.length > 0) {
       refreshConnectedData("input", inputConnectionIds);
     }
+    if (lastFrameConnectionIds.length > 0) {
+      refreshConnectedData("lastFrame", lastFrameConnectionIds);
+    }
   }, [
     imageConnectionIds,
     promptConnectionIds,
     inputConnectionIds,
+    lastFrameConnectionIds,
     refreshConnectedData,
     id,
   ]);
 
   const settingsOptions = canvasHost.models.videoSettings[selectedModel] || {};
+  const multiShotOptions = settingsOptions.multiShot;
+  const canMultiShot = Boolean(multiShotOptions) && connections.shotsFromInput.length >= 2;
+  const activeShots = multiShot && canMultiShot ? connections.shotsFromInput : null;
+  const lastFrameActive = Boolean(settingsOptions.supportsLastFrame) && connections.lastFrame !== null;
 
   useEffect(() => {
     setModelSettings((prev) => {
@@ -539,8 +599,8 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   ]);
 
   useEffect(() => {
-    updateNodeData(id, { selectedModel, modelSettings });
-  }, [id, modelSettings, selectedModel, updateNodeData]);
+    updateNodeData(id, { selectedModel, modelSettings, multiShot });
+  }, [id, modelSettings, multiShot, selectedModel, updateNodeData]);
 
   const updateSettings = (updates: Partial<VideoModelSettings>) => {
     setModelSettings((prev) => ({ ...prev, ...updates }));
@@ -571,6 +631,8 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
         ...connectedData,
         model: selectedModel,
         settings: modelSettings,
+        lastFrame: lastFrameActive ? connections.lastFrame : null,
+        shots: activeShots,
       });
     } catch (error) {
       console.error("Video generation failed:", error);
@@ -600,6 +662,7 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     kind: "video",
     model: selectedModel,
     settings: modelSettings,
+    shots: activeShots,
     hasImage: modelSupportsImage && connectedData.images.length > 0,
   });
 
@@ -651,6 +714,9 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   const hasLegacyPromptEdge = edgesSnapshot.some(
     (e) => e.target === id && e.targetHandle === "prompt",
   );
+  const hasLastFrameEdge = edgesSnapshot.some(
+    (e) => e.target === id && e.targetHandle === "lastFrame",
+  );
   const hasLegacyImagesEdge = edgesSnapshot.some(
     (e) => e.target === id && e.targetHandle === "images",
   );
@@ -674,6 +740,14 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
             id="input"
             label=""
             onChange={(ids) => handleConnectedIdsChange("input", ids)}
+          />
+        </div>
+        <div className="flex">
+          <CustomHandle
+            id="lastFrame"
+            label="Last frame"
+            onChange={(ids) => handleConnectedIdsChange("lastFrame", ids)}
+            hidden={!settingsOptions.supportsLastFrame && !hasLastFrameEdge}
           />
         </div>
         <div className="flex">
@@ -707,6 +781,29 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
             {!currentModel.supportsImage && " (text-to-video only)"}
           </div>
         </div>
+
+        {canMultiShot && multiShotOptions && (
+          <button
+            type="button"
+            data-testid="video-multishot-toggle"
+            aria-pressed={multiShot}
+            onClick={() => setMultiShot((value) => !value)}
+            className={`w-full rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors ${
+              multiShot
+                ? "border-primary bg-primary/10 text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            title={`Render the connected shots as one clip (up to ${multiShotOptions.maxShots} shots, ${multiShotOptions.totalSeconds[0]}-${multiShotOptions.totalSeconds[1]}s)`}
+          >
+            Multi-shot {multiShot ? "on" : "off"} · {connections.shotsFromInput.length} shots ·{" "}
+            {connections.shotsFromInput.reduce((sum, shot) => sum + shot.seconds, 0)}s
+          </button>
+        )}
+        {connections.lastFrame && !settingsOptions.supportsLastFrame && (
+          <div className="text-[10px] text-amber-600">
+            This model cannot end on a last frame; the connected image is ignored.
+          </div>
+        )}
 
         {(settingsOptions.durations ||
           settingsOptions.durationRange ||
