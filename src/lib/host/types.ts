@@ -47,7 +47,8 @@ export type GenerationRequest =
       jobId: string;
       boardId: string;
       model: string;
-      duration: string | number | undefined;
+      // What the provider will generate (see Provider.describeVideoTask).
+      durationSeconds: number;
       resolution: string | undefined;
       generateAudio: boolean;
     }

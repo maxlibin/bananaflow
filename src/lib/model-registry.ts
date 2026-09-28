@@ -1,3 +1,4 @@
+import { SORA_SETTINGS, VEO_SETTINGS, type VideoSettingOptions } from "./model-options";
 import type { ProviderId } from "./providers/types";
 
 // Server-side description of a model. Deployments compose their own
@@ -18,6 +19,9 @@ export type VideoModelInfo = {
   providerModel: string;
   supportsImageInput: boolean;
   defaultDuration: number;
+  // The settings the model accepts and their allowed values; the server
+  // validates requests against them (see resolveVideoSettings).
+  settings: VideoSettingOptions;
 };
 
 function openaiImage(providerModel: string, label: string): ImageModelInfo {
@@ -67,6 +71,7 @@ export const GOOGLE_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     providerModel: "veo-3.1-generate-preview",
     supportsImageInput: true,
     defaultDuration: 8,
+    settings: VEO_SETTINGS,
   },
   "google/veo-3.1-fast-generate-preview": {
     label: "Veo 3.1 Fast",
@@ -74,6 +79,7 @@ export const GOOGLE_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     providerModel: "veo-3.1-fast-generate-preview",
     supportsImageInput: true,
     defaultDuration: 8,
+    settings: VEO_SETTINGS,
   },
   "google/veo-3.1-lite-generate-preview": {
     label: "Veo 3.1 Lite",
@@ -81,6 +87,7 @@ export const GOOGLE_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     providerModel: "veo-3.1-lite-generate-preview",
     supportsImageInput: true,
     defaultDuration: 8,
+    settings: VEO_SETTINGS,
   },
 };
 
@@ -91,6 +98,7 @@ export const OPENAI_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     providerModel: "sora-2",
     supportsImageInput: true,
     defaultDuration: 4,
+    settings: SORA_SETTINGS,
   },
   "openai/sora-2-pro": {
     label: "Sora 2 Pro",
@@ -98,5 +106,6 @@ export const OPENAI_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     providerModel: "sora-2-pro",
     supportsImageInput: true,
     defaultDuration: 4,
+    settings: SORA_SETTINGS,
   },
 };

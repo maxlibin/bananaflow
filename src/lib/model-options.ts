@@ -102,13 +102,13 @@ export const GOOGLE_IMAGE_SETTING_OPTIONS: Record<string, ImageSettingOptions> =
   "google/gemini-3.1-flash-lite-image": { aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS },
 };
 
-const VEO_SETTINGS: VideoSettingOptions = {
+export const VEO_SETTINGS: VideoSettingOptions = {
   durations: ["4", "6", "8"],
   aspectRatios: ["16:9", "9:16"],
   resolutions: ["720p", "1080p"],
 };
 
-const SORA_SETTINGS: VideoSettingOptions = {
+export const SORA_SETTINGS: VideoSettingOptions = {
   durations: ["4", "8", "12"],
   aspectRatios: ["16:9", "9:16"],
 };

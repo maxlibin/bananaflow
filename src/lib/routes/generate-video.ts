@@ -4,8 +4,10 @@ import { denialResponse } from "../host/denial-response";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { HostAdapter } from "../host/types";
 import { getProvider } from "../providers";
+import type { VideoTaskSpec } from "../providers/types";
 import { buildReferenceImages } from "../reference-images";
 import type { VideoModelSettings } from "../video-models";
+import { InvalidVideoSettingsError, resolveVideoSettings } from "../video-settings";
 import {
   completeVideoJob,
   createVideoJob,
@@ -74,22 +76,33 @@ export function createGenerateVideoRoute(host: HostAdapter) {
     }
     const provider = getProvider(host, modelConfig.provider);
 
-    const settings: Partial<VideoModelSettings> =
+    const requestedSettings: Partial<VideoModelSettings> =
       body.settings && typeof body.settings === "object" ? body.settings : {};
 
-    const billingDuration =
-      (settings.duration as string | number | undefined) ??
-      modelConfig.defaultDuration;
-    const billingResolution =
-      (settings.resolution as string | undefined) ??
-      (settings.quality as string | undefined) ??
-      (settings.size as string | undefined);
+    const images = (body.images ?? []).filter(
+      (i): i is { imageUrl: string; blobPath?: string } =>
+        Boolean(i && typeof i.imageUrl === "string" && i.imageUrl.length > 0),
+    );
+    const supportedImages = modelConfig.supportsImageInput ? images : [];
 
-    // Models split audio across two settings fields: Seedance uses
-    // `generateAudio`, Kling 3.0 / 2.6 use `sound`. Either being true means
-    // the user requested audio and we should charge the audio rate.
-    const audioRequested =
-      settings.generateAudio === true || settings.sound === true;
+    // Billing and the provider request both read `settings`, so the price
+    // always matches what the provider is asked to generate.
+    let settings: Partial<VideoModelSettings>;
+    let spec: VideoTaskSpec;
+    try {
+      settings = resolveVideoSettings(model, modelConfig.settings, requestedSettings);
+      spec = provider.describeVideoTask({
+        model,
+        settings,
+        hasImage: supportedImages.length > 0,
+      });
+    } catch (error) {
+      if (!(error instanceof InvalidVideoSettingsError)) throw error;
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 400 },
+      );
+    }
 
     let providerSecret: string;
     try {
@@ -109,12 +122,6 @@ export function createGenerateVideoRoute(host: HostAdapter) {
     }
 
     const callbackBase = host.callbacks.publicBaseUrl();
-
-    const images = (body.images ?? []).filter(
-      (i): i is { imageUrl: string; blobPath?: string } =>
-        Boolean(i && typeof i.imageUrl === "string" && i.imageUrl.length > 0),
-    );
-    const supportedImages = modelConfig.supportsImageInput ? images : [];
 
     const resolvedSource: "node" | "chat" =
       body.source === "chat" ? "chat" : "node";
@@ -140,9 +147,9 @@ export function createGenerateVideoRoute(host: HostAdapter) {
       jobId,
       boardId,
       model,
-      duration: billingDuration,
-      resolution: billingResolution,
-      generateAudio: audioRequested,
+      durationSeconds: spec.durationSeconds,
+      resolution: spec.resolution,
+      generateAudio: spec.generateAudio,
     });
     if (!decision.ok) {
       return denialResponse(decision);

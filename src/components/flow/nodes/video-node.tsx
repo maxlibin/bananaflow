@@ -596,17 +596,11 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   const modelSupportsImage = currentModel.supportsImage;
   const modelRequiresImage = currentModel.requiresImage ?? false;
 
-  // Estimated credits to charge on Generate (model + duration + resolution).
   const estimatedVideoCost = canvasHost.costPreview({
     kind: "video",
     model: selectedModel,
-    duration: modelSettings.duration,
-    resolution:
-      modelSettings.resolution || modelSettings.quality || modelSettings.size,
-    // Seedance toggles via `generateAudio`; Kling 3.0 / 2.6 toggle via
-    // `sound`. Either flag means audio is on for billing purposes.
-    generateAudio:
-      modelSettings.generateAudio === true || modelSettings.sound === true,
+    settings: modelSettings,
+    hasImage: modelSupportsImage && connectedData.images.length > 0,
   });
 
   const handleDownloadVideo = async (videoUrl: string, prompt?: string) => {
