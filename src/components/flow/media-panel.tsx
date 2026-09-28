@@ -14,14 +14,7 @@ import {
   FolderOpen,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
-
-interface MediaItem {
-  type: "image" | "video";
-  url: string;
-  fileName?: string;
-  nodeId: string;
-  source: "uploaded" | "generated";
-}
+import { collectBoardMedia, type MediaItem } from "../../lib/board-media";
 
 export function MediaPanel() {
   const { isOpen, setOpen: setIsOpen } = useMediaPanel();
@@ -30,57 +23,7 @@ export function MediaPanel() {
 
   const nodes = useBoardStore((state) => state.nodes);
 
-  const mediaItems = useMemo(() => {
-    const items: MediaItem[] = [];
-
-    for (const node of nodes) {
-      const data = node.data as Record<string, unknown> | undefined;
-      if (!data) continue;
-
-      if (node.type === "imageNode") {
-        const imageUrl = data.imageUrl as string | undefined;
-        if (imageUrl) {
-          items.push({
-            type: "image",
-            url: imageUrl,
-            fileName: (data.fileName as string) || "Uploaded image",
-            nodeId: node.id,
-            source: "uploaded",
-          });
-        }
-      }
-
-      if (node.type === "outputNode") {
-        const result = data.result as Record<string, unknown> | undefined;
-        const imageUrl = result?.imageUrl as string | undefined;
-        if (imageUrl) {
-          items.push({
-            type: "image",
-            url: imageUrl,
-            fileName: (result?.fileName as string) || "Generated image",
-            nodeId: node.id,
-            source: "generated",
-          });
-        }
-      }
-
-      if (node.type === "videoNode") {
-        const result = data.result as Record<string, unknown> | undefined;
-        const videoUrl = result?.videoUrl as string | undefined;
-        if (videoUrl) {
-          items.push({
-            type: "video",
-            url: videoUrl,
-            fileName: (result?.fileName as string) || "Generated video",
-            nodeId: node.id,
-            source: "generated",
-          });
-        }
-      }
-    }
-
-    return items;
-  }, [nodes]);
+  const mediaItems = useMemo(() => collectBoardMedia(nodes), [nodes]);
 
   const imageCount = mediaItems.filter((m) => m.type === "image").length;
   const videoCount = mediaItems.filter((m) => m.type === "video").length;

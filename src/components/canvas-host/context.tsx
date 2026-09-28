@@ -5,11 +5,15 @@ import type * as boards from "../../lib/actions/boards";
 import type * as bulkRuns from "../../lib/actions/bulk-runs";
 import type * as media from "../../lib/actions/media";
 import type * as runHistory from "../../lib/actions/run-history";
+import type * as script from "../../lib/actions/script";
 import type * as userPreferences from "../../lib/actions/user-preferences";
 import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
 import type { HostAdapter } from "../../lib/host/types";
+import type { VideoModelSettings } from "../../lib/video-models";
 import type { CanvasModels } from "../../lib/model-options";
+import type { ScriptAssistant } from "../../lib/script/assistant";
+import type { DirectionSamples } from "../../lib/direction/presets";
 import type { TrackFn } from "../../lib/track-events";
 
 // The engine exports action implementations that take the host first. An
@@ -31,17 +35,20 @@ export type CanvasActions = {
   pinMedia: WithoutHost<typeof runHistory.pinMedia>;
   getBulkRun: WithoutHost<typeof bulkRuns.getBulkRun>;
   deleteMedia: WithoutHost<typeof media.deleteMedia>;
+  proposeScriptConcepts: WithoutHost<typeof script.proposeScriptConcepts>;
+  writeScript: WithoutHost<typeof script.writeScript>;
+  editScriptSelection: WithoutHost<typeof script.editScriptSelection>;
+  alternativeScriptHooks: WithoutHost<typeof script.alternativeScriptHooks>;
+  critiqueScript: WithoutHost<typeof script.critiqueScript>;
+  extractScriptEntities: WithoutHost<typeof script.extractScriptEntities>;
+  breakScriptIntoShots: WithoutHost<typeof script.breakScriptIntoShots>;
 };
 
 export type CostPreviewInput =
   | { kind: "image"; model: string; count: number }
-  | {
-      kind: "video";
-      model: string;
-      duration: string | number | undefined;
-      resolution: string | undefined;
-      generateAudio: boolean;
-    }
+  // The node's settings as sent to /api/generate-video; the host prices them
+  // the way the server will (resolveVideoSettings + describeVideoTask).
+  | { kind: "video"; model: string; settings: Partial<VideoModelSettings>; hasImage: boolean }
   | { kind: "advanced"; op: AdvancedOpId }
   | { kind: "bulk"; model: string; count: number };
 
@@ -68,6 +75,11 @@ export type CanvasHost = {
   // refresh balances or analytics.
   onGenerationSettled: () => void;
   track: TrackFn;
+  // AI writing help for Script nodes; null when the host has no LLM.
+  scriptAssistant: ScriptAssistant | null;
+  // Sample media per direction preset, keyed by directionSampleKey(); presets
+  // without one show their description only.
+  directionSamples: DirectionSamples;
 };
 
 const CanvasHostContext = createContext<CanvasHost | null>(null);

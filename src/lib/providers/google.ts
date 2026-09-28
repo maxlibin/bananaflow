@@ -9,7 +9,10 @@ import {
   type TaskStart,
   type TaskStatus,
   type VideoTaskInput,
+  type VideoTaskSpec,
 } from "./types";
+import type { VideoModelSettings } from "../video-models";
+import { settingSeconds } from "../video-settings";
 
 export const GOOGLE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -109,6 +112,14 @@ type Operation = {
   };
 };
 
+function describeVideoTask(input: { model: string; settings: Partial<VideoModelSettings> }): VideoTaskSpec {
+  return {
+    durationSeconds: settingSeconds(input.model, "duration", input.settings),
+    resolution: input.settings.resolution,
+    generateAudio: false,
+  };
+}
+
 async function createVideoTask(input: VideoTaskInput): Promise<TaskStart> {
   const instance: Record<string, unknown> = { prompt: input.prompt };
   const reference = input.referenceImages[0];
@@ -200,6 +211,7 @@ export const googleProvider: Provider = {
   parseImageCallback() {
     throw new UnsupportedCallbackError("google");
   },
+  describeVideoTask,
   createVideoTask,
   fetchVideoTask,
   parseVideoCallback() {

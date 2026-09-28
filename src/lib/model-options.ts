@@ -3,6 +3,9 @@
 
 export type ImageModelOption = { value: string; label: string };
 
+// A language model offered for script writing.
+export type TextModelOption = { id: string; label: string; description: string };
+
 export type ImageSettingOptions = {
   aspectRatios?: string[];
   // Some models only allow certain resolutions for certain aspect ratios.
@@ -47,6 +50,9 @@ export type VideoSettingOptions = {
 
 export type CanvasModels = {
   image: ImageModelOption[];
+  // Image model used by default for shot keyframes and entity reference
+  // sheets; it must take several reference images and keep identities.
+  referenceImageModel: string;
   imageSettings: Record<string, ImageSettingOptions>;
   video: VideoModelOption[];
   videoSettings: Record<string, VideoSettingOptions>;
@@ -96,13 +102,13 @@ export const GOOGLE_IMAGE_SETTING_OPTIONS: Record<string, ImageSettingOptions> =
   "google/gemini-3.1-flash-lite-image": { aspectRatios: GEMINI_IMAGE_ASPECT_RATIOS },
 };
 
-const VEO_SETTINGS: VideoSettingOptions = {
+export const VEO_SETTINGS: VideoSettingOptions = {
   durations: ["4", "6", "8"],
   aspectRatios: ["16:9", "9:16"],
   resolutions: ["720p", "1080p"],
 };
 
-const SORA_SETTINGS: VideoSettingOptions = {
+export const SORA_SETTINGS: VideoSettingOptions = {
   durations: ["4", "8", "12"],
   aspectRatios: ["16:9", "9:16"],
 };

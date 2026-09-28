@@ -1,6 +1,7 @@
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import {
+  media as mediaTable,
   videoJobs,
   type VideoJob,
 } from "../db/schema";
@@ -76,62 +77,63 @@ export async function findVideoJobForUser(
   return row ?? null;
 }
 
+const OPEN_STATUSES = ["pending", "processing"] as const;
+
+// Settling a job is a compare-and-set; see settleImageJob in image-jobs.ts.
+async function settleVideoJob(
+  db: EngineDatabase,
+  jobId: string,
+  values: Partial<typeof videoJobs.$inferInsert>,
+): Promise<boolean> {
+  const settled = await db
+    .update(videoJobs)
+    .set({ ...values, completedAt: new Date() })
+    .where(and(eq(videoJobs.id, jobId), inArray(videoJobs.status, [...OPEN_STATUSES])))
+    .returning({ id: videoJobs.id });
+  return settled.length === 1;
+}
+
+// Records the provider task, and moves the job to processing only if nothing
+// settled it (e.g. a cancel) while the provider call was in flight.
 export async function setVideoJobProviderTaskId(
   db: EngineDatabase,
   jobId: string,
   providerTaskId: string,
 ): Promise<void> {
+  await db.update(videoJobs).set({ providerTaskId }).where(eq(videoJobs.id, jobId));
   await db
     .update(videoJobs)
-    .set({ providerTaskId, status: "processing" })
-    .where(eq(videoJobs.id, jobId));
+    .set({ status: "processing" })
+    .where(and(eq(videoJobs.id, jobId), eq(videoJobs.status, "pending")));
 }
 
 export async function markVideoJobCompleted(
   db: EngineDatabase,
   jobId: string,
   result: { mediaId: string; blobPath: string; blobUrl: string },
-): Promise<void> {
-  await db
-    .update(videoJobs)
-    .set({
-      status: "completed",
-      resultMediaId: result.mediaId,
-      resultBlobPath: result.blobPath,
-      resultBlobUrl: result.blobUrl,
-      completedAt: new Date(),
-    })
-    .where(eq(videoJobs.id, jobId));
+): Promise<boolean> {
+  return settleVideoJob(db, jobId, {
+    status: "completed",
+    resultMediaId: result.mediaId,
+    resultBlobPath: result.blobPath,
+    resultBlobUrl: result.blobUrl,
+  });
 }
 
 export async function markVideoJobFailed(
   db: EngineDatabase,
   jobId: string,
   errorMessage: string,
-): Promise<void> {
-  await db
-    .update(videoJobs)
-    .set({
-      status: "failed",
-      errorMessage,
-      completedAt: new Date(),
-    })
-    .where(eq(videoJobs.id, jobId));
+): Promise<boolean> {
+  return settleVideoJob(db, jobId, { status: "failed", errorMessage });
 }
 
 export async function markVideoJobCancelled(
   db: EngineDatabase,
   jobId: string,
-  errorMessage = "Cancelled by user",
-): Promise<void> {
-  await db
-    .update(videoJobs)
-    .set({
-      status: "cancelled",
-      errorMessage,
-      completedAt: new Date(),
-    })
-    .where(eq(videoJobs.id, jobId));
+  errorMessage: string,
+): Promise<boolean> {
+  return settleVideoJob(db, jobId, { status: "cancelled", errorMessage });
 }
 
 export async function findStaleVideoJobs(
@@ -150,11 +152,14 @@ export async function findStaleVideoJobs(
     );
 }
 
+// Fails the job and refunds its reservation, unless another caller settled
+// it first.
 export async function failVideoJob(
   host: HostAdapter,
   job: Pick<VideoJob, "id" | "userId" | "reservedMicro">,
   message: string,
 ): Promise<void> {
+  if (!(await markVideoJobFailed(host.db, job.id, message))) return;
   await host.policy.afterGenerate({
     kind: "video",
     status: "failed",
@@ -163,7 +168,24 @@ export async function failVideoJob(
     reservedMicro: job.reservedMicro,
     reason: message,
   });
-  await markVideoJobFailed(host.db, job.id, message);
+}
+
+// Cancels the job for its owner and refunds the reservation, unless another
+// caller settled it first. Returns whether this call cancelled it.
+export async function cancelVideoJob(
+  host: HostAdapter,
+  job: Pick<VideoJob, "id" | "userId" | "reservedMicro">,
+): Promise<boolean> {
+  if (!(await markVideoJobCancelled(host.db, job.id, "Cancelled by user"))) return false;
+  await host.policy.afterGenerate({
+    kind: "video",
+    status: "cancelled",
+    userId: job.userId,
+    jobId: job.id,
+    reservedMicro: job.reservedMicro,
+    reason: "User cancelled",
+  });
+  return true;
 }
 
 export type FinalizeOutcome =
@@ -240,11 +262,23 @@ export async function completeVideoJob(
   });
 
   const mediaId = persisted.mediaIds[0];
-  await markVideoJobCompleted(host.db, job.id, {
+  const won = await markVideoJobCompleted(host.db, job.id, {
     mediaId,
     blobPath: blob.pathname,
     blobUrl: blob.url,
   });
+  if (!won) {
+    // Cancelled, failed or completed elsewhere while this call was uploading:
+    // that outcome stands, so the media saved here must not reach the user.
+    await host.db.delete(mediaTable).where(eq(mediaTable.id, mediaId));
+    console.warn("Video job settled elsewhere during completion; discarded its media", {
+      jobId: job.id,
+      orphanedBlobPath: blob.pathname,
+    });
+    const settled = await findVideoJob(host.db, job.id);
+    if (!settled) throw new Error(`Video job ${job.id} disappeared while completing`);
+    return outcomeForTerminalJob(settled);
+  }
 
   await host.policy.afterGenerate({
     kind: "video",

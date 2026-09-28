@@ -9,7 +9,10 @@ import {
   type TaskStart,
   type TaskStatus,
   type VideoTaskInput,
+  type VideoTaskSpec,
 } from "./types";
+import type { VideoModelSettings } from "../video-models";
+import { settingSeconds } from "../video-settings";
 
 export const OPENAI_API_BASE_URL = "https://api.openai.com/v1";
 
@@ -123,6 +126,14 @@ type SoraJob = {
   error?: { message?: string } | null;
 };
 
+function describeVideoTask(input: { model: string; settings: Partial<VideoModelSettings> }): VideoTaskSpec {
+  return {
+    durationSeconds: settingSeconds(input.model, "duration", input.settings),
+    resolution: undefined,
+    generateAudio: false,
+  };
+}
+
 async function createVideoTask(input: VideoTaskInput): Promise<TaskStart> {
   const aspect = typeof input.settings.aspectRatio === "string" ? input.settings.aspectRatio : "16:9";
   const sizes = VIDEO_SIZE_BY_ASPECT[aspect] ?? VIDEO_SIZE_BY_ASPECT["16:9"];
@@ -214,6 +225,7 @@ export const openaiProvider: Provider = {
   parseImageCallback() {
     throw new UnsupportedCallbackError("openai");
   },
+  describeVideoTask,
   createVideoTask,
   fetchVideoTask,
   parseVideoCallback() {

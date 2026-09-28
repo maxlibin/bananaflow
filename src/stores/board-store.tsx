@@ -16,6 +16,10 @@ import { useStore } from "zustand";
 import { createId } from "@paralleldrive/cuid2";
 
 import type { VideoModelSettings } from "../lib/video-models";
+import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
+import { applyShotPlans } from "../lib/script/shot-graph";
+import { buildStructureSkeleton } from "../lib/script/structures";
+import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -35,7 +39,37 @@ const EDGE_COLORS: Record<BoardNodeType, string> = {
   upscaleNode: "#10b981",
   removeBgNode: "#06b6d4",
   faceConsistencyNode: "#e11d48",
+  scriptNode: "#6366f1",
+  shotNode: "#14b8a6",
+  entityNode: "#d946ef",
 };
+
+const ENTITY_COLUMN_OFFSET = -420;
+const ENTITY_ROW_SPACING = 380;
+
+export function entityValue(name: string, look: string): string {
+  return look.trim() ? `${name.trim().toUpperCase()}: ${look.trim()}` : "";
+}
+
+function entityNodeData(input: {
+  kind: EntityKind;
+  name: string;
+  look: string;
+  scriptNodeId: string | null;
+}): EntityNodeData {
+  return {
+    label: input.name,
+    kind: input.kind,
+    name: input.name,
+    look: input.look,
+    value: entityValue(input.name, input.look),
+    images: [],
+    scriptNodeId: input.scriptNodeId,
+    lastSheetUrl: null,
+  };
+}
+
+const DEFAULT_SCRIPT_DURATION = 30;
 
 const getEdgeStyle = (sourceType?: BoardNodeType | null) => ({
   stroke: sourceType ? EDGE_COLORS[sourceType] : "#94a3b8",
@@ -67,7 +101,10 @@ export type BoardNodeType =
   | "seedNode"
   | "upscaleNode"
   | "removeBgNode"
-  | "faceConsistencyNode";
+  | "faceConsistencyNode"
+  | "scriptNode"
+  | "shotNode"
+  | "entityNode";
 
 interface BoardStoreConfig {
   boardId?: string;
@@ -143,6 +180,22 @@ interface BoardState {
   addUpscaleNode: (viewport?: Viewport) => void;
   addRemoveBgNode: (viewport?: Viewport) => void;
   addFaceConsistencyNode: (viewport?: Viewport) => void;
+  addScriptNode: (viewport?: Viewport) => void;
+  addEntityNode: (viewport?: Viewport) => void;
+  // Adds Entity nodes for a script's cast and props (skipping names already
+  // on the board for that script), stacked to the left of the Script node.
+  addEntitiesFromScript: (scriptNodeId: string, drafts: EntityDraft[]) => void;
+  // Lays out (or updates) Shot nodes plus one Video node per new shot for a
+  // Script node, from an AI shot breakdown.
+  applyShotPlans: (input: {
+    scriptNodeId: string;
+    plans: ShotPlan[];
+    sceneHashes: Record<string, string>;
+    sceneHeadings: Record<string, string>;
+    keyframeModelId: string;
+    videoModelId: string;
+    aspectRatio: string;
+  }) => void;
   updateNodeData: (
     nodeId: string,
     data: Record<string, unknown>
@@ -569,6 +622,43 @@ function createBoardStore({
             position,
             data: { label: "Face Consistency" },
           };
+        case "entityNode":
+          return {
+            id: `entity-${timestamp}`,
+            type: "entityNode",
+            position,
+            data: entityNodeData({
+              kind: "character",
+              name: "New character",
+              look: "",
+              scriptNodeId: null,
+            }),
+          };
+        case "scriptNode": {
+          const data: ScriptNodeData = {
+            label: "Script",
+            brief: { product: "", audience: "", goal: "", tone: "", notes: "" },
+            title: "Untitled script",
+            logline: "",
+            structureId: "hook-problem-solution-cta",
+            targetDuration: DEFAULT_SCRIPT_DURATION,
+            platform: "TikTok / Reels",
+            aspectRatio: "9:16",
+            look: null,
+            lighting: null,
+            doc: buildStructureSkeleton({
+              structureId: "hook-problem-solution-cta",
+              targetDuration: DEFAULT_SCRIPT_DURATION,
+              createSceneId: createId,
+            }),
+          };
+          return {
+            id: `script-${timestamp}`,
+            type: "scriptNode",
+            position,
+            data,
+          };
+        }
         default:
           return {
             id: `${nodeType}-${timestamp}`,
@@ -1057,7 +1147,11 @@ function createBoardStore({
             targetNode?.type === "videoNode" ||
             targetNode?.type === "faceConsistencyNode"
           ) {
-            if (sourceNode?.type === "inputNode") {
+            if (
+              sourceNode?.type === "inputNode" ||
+              sourceNode?.type === "shotNode" ||
+              sourceNode?.type === "entityNode"
+            ) {
               params.targetHandle = "input";
             } else if (sourceNode?.type === "promptNode") {
               params.targetHandle = "prompt";
@@ -1179,6 +1273,64 @@ function createBoardStore({
       },
       addFaceConsistencyNode: (viewport) => {
         get().createNodeWithType("faceConsistencyNode", viewport);
+      },
+      addScriptNode: (viewport) => {
+        get().createNodeWithType("scriptNode", viewport);
+      },
+      addEntityNode: (viewport) => {
+        get().createNodeWithType("entityNode", viewport);
+      },
+      addEntitiesFromScript: (scriptNodeId, drafts) => {
+        const scriptNode = get().nodes.find((node) => node.id === scriptNodeId);
+        if (!scriptNode) {
+          throw new Error(`Script node ${scriptNodeId} not found on this board`);
+        }
+        handleNodeInsertion((nodesSnapshot) => {
+          const existing = nodesSnapshot.filter(
+            (node) =>
+              node.type === "entityNode" &&
+              (node.data as EntityNodeData).scriptNodeId === scriptNodeId,
+          );
+          const taken = new Set(
+            existing.map((node) => (node.data as EntityNodeData).name.trim().toLowerCase()),
+          );
+          const added = drafts
+            .filter((draft) => !taken.has(draft.name.trim().toLowerCase()))
+            .map((draft, index): Node => ({
+              id: `entity-${createId()}`,
+              type: "entityNode",
+              position: {
+                x: scriptNode.position.x + ENTITY_COLUMN_OFFSET,
+                y: scriptNode.position.y + (existing.length + index) * ENTITY_ROW_SPACING,
+              },
+              data: entityNodeData({ ...draft, scriptNodeId }),
+            }));
+          return [...nodesSnapshot, ...added];
+        });
+      },
+      applyShotPlans: ({ scriptNodeId, plans, sceneHashes, sceneHeadings, keyframeModelId, videoModelId, aspectRatio }) => {
+        set((state) => {
+          const scriptNode = state.nodes.find((node) => node.id === scriptNodeId);
+          if (!scriptNode) {
+            throw new Error(`Script node ${scriptNodeId} not found on this board`);
+          }
+          const graph = applyShotPlans({
+            scriptNode,
+            plans,
+            sceneHashes,
+            sceneHeadings,
+            keyframeModelId,
+            videoModelId,
+            aspectRatio,
+            nodes: state.nodes,
+            edges: state.edges,
+            createId,
+          });
+          const nextNodes = attachCallbacksToNodes(graph.nodes);
+          const nextEdges = graph.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+          scheduleSaveDebounced(nextNodes, nextEdges);
+          return { ...state, nodes: nextNodes, edges: nextEdges };
+        });
       },
       updateNodeData: (nodeId, data) => {
         set((state) => {

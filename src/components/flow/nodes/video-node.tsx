@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { Handle, Position, useNodeConnections } from "@xyflow/react";
 import NextImage from "next/image";
 import { Button } from "../../ui/button";
@@ -21,6 +21,7 @@ import {
 import { Slider } from "../../ui/slider";
 import { ModelCombobox } from "../model-combobox";
 import { NodeBox } from "./node-box";
+import { mergeConnectedImages, type ConnectedImage } from "./connected-images";
 import {
   Video,
   MessageSquare,
@@ -152,18 +153,22 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     };
   });
 
-  const [connectedData, setConnectedData] = useState<{
-    images: Array<{
-      nodeId: string;
-      imageUrl: string;
-      fileName?: string;
-      blobPath?: string;
-    }>;
+  const [connections, setConnections] = useState<{
     prompt: string;
+    imagesFromImages: ConnectedImage[];
+    imagesFromInput: ConnectedImage[];
   }>({
-    images: [],
     prompt: "",
+    imagesFromImages: [],
+    imagesFromInput: [],
   });
+  const connectedData = useMemo(
+    () => ({
+      prompt: connections.prompt,
+      images: mergeConnectedImages(connections.imagesFromImages, connections.imagesFromInput),
+    }),
+    [connections],
+  );
 
   // If `data.result` was cleared but the per-field outputs (videoUrl,
   // fileName, runGroupId, mediaIds) survived on the node data, reconstruct
@@ -213,12 +218,12 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
     (handleId: string, connectedIds: string[]) => {
       if (handleId === "images") {
         if (!connectedIds.length) {
-          setConnectedData((prev) =>
-            prev.images.length === 0
+          setConnections((prev) =>
+            prev.imagesFromImages.length === 0
               ? prev
               : {
                 ...prev,
-                images: [],
+                imagesFromImages: [],
               }
           );
           return;
@@ -261,8 +266,8 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
             blobPath?: string;
           }>;
 
-        setConnectedData((prev) => {
-          const prevImages = prev.images || [];
+        setConnections((prev) => {
+          const prevImages = prev.imagesFromImages || [];
           const hasChanged =
             prevImages.length !== imageData.length ||
             prevImages.some((prevImg, index) => {
@@ -282,7 +287,7 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
 
           return {
             ...prev,
-            images: imageData,
+            imagesFromImages: imageData,
           };
         });
       } else if (handleId === "prompt") {
@@ -298,7 +303,7 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
             ? (promptNode.data as { value?: string }).value ?? ""
             : "";
 
-        setConnectedData((prev) => {
+        setConnections((prev) => {
           if (prev.prompt === promptValue) {
             return prev;
           }
@@ -309,12 +314,12 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
         });
       } else if (handleId === "input") {
         if (!connectedIds.length) {
-          setConnectedData((prev) => {
-            const noImages = prev.images.length === 0;
+          setConnections((prev) => {
+            const noImages = prev.imagesFromInput.length === 0;
             const noPrompt = !prev.prompt;
             return noImages && noPrompt
               ? prev
-              : { ...prev, images: [], prompt: "" };
+              : { ...prev, imagesFromInput: [], prompt: "" };
           });
           return;
         }
@@ -357,9 +362,9 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
           }
         }
 
-        setConnectedData((prev) => {
+        setConnections((prev) => {
           const promptChanged = prev.prompt !== promptText;
-          const prevImages = prev.images || [];
+          const prevImages = prev.imagesFromInput || [];
           const imagesChanged =
             prevImages.length !== aggregatedImages.length ||
             prevImages.some((p, i) => {
@@ -376,7 +381,7 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
           return {
             ...prev,
             prompt: promptText,
-            images: aggregatedImages,
+            imagesFromInput: aggregatedImages,
           };
         });
       }
@@ -591,17 +596,11 @@ function VideoNode({ id, data, isConnectable, selected }: VideoNodeProps) {
   const modelSupportsImage = currentModel.supportsImage;
   const modelRequiresImage = currentModel.requiresImage ?? false;
 
-  // Estimated credits to charge on Generate (model + duration + resolution).
   const estimatedVideoCost = canvasHost.costPreview({
     kind: "video",
     model: selectedModel,
-    duration: modelSettings.duration,
-    resolution:
-      modelSettings.resolution || modelSettings.quality || modelSettings.size,
-    // Seedance toggles via `generateAudio`; Kling 3.0 / 2.6 toggle via
-    // `sound`. Either flag means audio is on for billing purposes.
-    generateAudio:
-      modelSettings.generateAudio === true || modelSettings.sound === true,
+    settings: modelSettings,
+    hasImage: modelSupportsImage && connectedData.images.length > 0,
   });
 
   const handleDownloadVideo = async (videoUrl: string, prompt?: string) => {

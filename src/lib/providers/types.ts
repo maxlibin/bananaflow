@@ -60,6 +60,15 @@ export type VideoTaskInput = {
   secret: string;
 };
 
+// What a video task will generate, read from the same settings
+// `createVideoTask` sends, so the host can price exactly that.
+export type VideoTaskSpec = {
+  durationSeconds: number;
+  // Price tier as the host's rate table names it; undefined = the model's base tier.
+  resolution: string | undefined;
+  generateAudio: boolean;
+};
+
 export type ProviderKeyCheck =
   | { ok: true }
   // `status` is the provider's own error code when it returns one in the
@@ -75,6 +84,12 @@ export type Provider = {
   createImageTask(input: ImageTaskInput): Promise<TaskStart>;
   fetchImageTask(model: string, taskId: string, secret: string): Promise<TaskStatus>;
   parseImageCallback(model: string, payload: Record<string, unknown>): TaskStatus;
+  // Receives settings already checked by `resolveVideoSettings`.
+  describeVideoTask(input: {
+    model: string;
+    settings: Partial<VideoModelSettings>;
+    hasImage: boolean;
+  }): VideoTaskSpec;
   createVideoTask(input: VideoTaskInput): Promise<TaskStart>;
   fetchVideoTask(model: string, taskId: string, secret: string): Promise<TaskStatus>;
   parseVideoCallback(model: string, payload: Record<string, unknown>): TaskStatus;

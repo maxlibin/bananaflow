@@ -23,6 +23,9 @@ import {
   UpscaleNode,
   RemoveBgNode,
   FaceConsistencyNode,
+  ScriptNode,
+  ShotNode,
+  EntityNode,
 } from "./nodes";
 import { FlowControls } from "./controls";
 import { ReadOnlyProvider } from "./readonly-context";
@@ -40,6 +43,9 @@ const nodeTypes = {
   upscaleNode: UpscaleNode,
   removeBgNode: RemoveBgNode,
   faceConsistencyNode: FaceConsistencyNode,
+  scriptNode: ScriptNode,
+  shotNode: ShotNode,
+  entityNode: EntityNode,
 };
 
 interface FlowContainerProps {
@@ -72,7 +78,11 @@ export function FlowCanvas({ isReadOnly = false }: { isReadOnly?: boolean }) {
           targetNode?.type === "videoNode" ||
           targetNode?.type === "faceConsistencyNode"
         ) {
-          if (sourceNode?.type === "inputNode") {
+          if (
+            sourceNode?.type === "inputNode" ||
+            sourceNode?.type === "shotNode" ||
+            sourceNode?.type === "entityNode"
+          ) {
             connection.targetHandle = "input";
           } else if (sourceNode?.type === "promptNode") {
             connection.targetHandle = "prompt";

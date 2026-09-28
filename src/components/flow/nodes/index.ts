@@ -7,4 +7,7 @@ export { default as SeedNode } from "./seed-node";
 export { default as UpscaleNode } from "./advanced/upscale-node";
 export { default as RemoveBgNode } from "./advanced/remove-bg-node";
 export { default as FaceConsistencyNode } from "./advanced/face-consistency-node";
+export { default as ScriptNode } from "./script-node";
+export { default as ShotNode } from "./shot-node";
+export { default as EntityNode } from "./entity-node";
 export { NodeBox } from "./node-box";

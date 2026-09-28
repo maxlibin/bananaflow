@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { eq } from "drizzle-orm";
 import { media as mediaTable } from "../../db/schema";
 import type { HostAdapter } from "../host/types";
-import { findVideoJobForUser, markVideoJobCancelled } from "../video-jobs";
+import { cancelVideoJob, findVideoJobForUser } from "../video-jobs";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -71,15 +71,10 @@ export function createVideoJobRoute(host: HostAdapter) {
       return NextResponse.json({ ok: true, status: job.status });
     }
 
-    await host.policy.afterGenerate({
-      kind: "video",
-      status: "cancelled",
-      userId,
-      jobId: job.id,
-      reservedMicro: job.reservedMicro,
-      reason: "User cancelled",
-    });
-    await markVideoJobCancelled(host.db, job.id);
+    if (!(await cancelVideoJob(host, job))) {
+      const settled = await findVideoJobForUser(host.db, jobId, userId);
+      return NextResponse.json({ ok: true, status: settled?.status ?? job.status });
+    }
     return NextResponse.json({ ok: true, status: "cancelled" });
   }
 

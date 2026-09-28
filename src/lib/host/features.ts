@@ -7,4 +7,5 @@ export type GenerationFeature =
   | "IMAGE_UPSCALE"
   | "BACKGROUND_REMOVAL"
   | "FACE_CONSISTENCY"
+  | "TEXT_GENERATION"
   | "BOARD_CREATED";
