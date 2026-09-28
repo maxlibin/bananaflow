@@ -10,4 +10,5 @@ export { default as FaceConsistencyNode } from "./advanced/face-consistency-node
 export { default as ScriptNode } from "./script-node";
 export { default as ShotNode } from "./shot-node";
 export { default as EntityNode } from "./entity-node";
+export { default as SequenceNode } from "./sequence-node";
 export { NodeBox } from "./node-box";

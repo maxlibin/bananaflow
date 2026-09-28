@@ -88,6 +88,12 @@ export const NodeBox = ({
       border: "border-teal-300",
       selectedBorder: "border-teal-500/70",
     },
+    sequenceNode: {
+      dot: "bg-sky-500",
+      handle: "bg-sky-400",
+      border: "border-sky-300",
+      selectedBorder: "border-sky-500/70",
+    },
     entityNode: {
       dot: "bg-fuchsia-500",
       handle: "bg-fuchsia-400",

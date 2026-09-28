@@ -20,6 +20,7 @@ import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
 import { applyShotPlans } from "../lib/script/shot-graph";
 import { buildStructureSkeleton } from "../lib/script/structures";
 import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
+import type { SequenceNodeData } from "../lib/sequence/types";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -42,6 +43,7 @@ const EDGE_COLORS: Record<BoardNodeType, string> = {
   scriptNode: "#6366f1",
   shotNode: "#14b8a6",
   entityNode: "#d946ef",
+  sequenceNode: "#0ea5e9",
 };
 
 const ENTITY_COLUMN_OFFSET = -420;
@@ -104,7 +106,8 @@ export type BoardNodeType =
   | "faceConsistencyNode"
   | "scriptNode"
   | "shotNode"
-  | "entityNode";
+  | "entityNode"
+  | "sequenceNode";
 
 interface BoardStoreConfig {
   boardId?: string;
@@ -182,6 +185,7 @@ interface BoardState {
   addFaceConsistencyNode: (viewport?: Viewport) => void;
   addScriptNode: (viewport?: Viewport) => void;
   addEntityNode: (viewport?: Viewport) => void;
+  addSequenceNode: (viewport?: Viewport) => void;
   // Adds Entity nodes for a script's cast and props (skipping names already
   // on the board for that script), stacked to the left of the Script node.
   addEntitiesFromScript: (scriptNodeId: string, drafts: EntityDraft[]) => void;
@@ -624,6 +628,10 @@ function createBoardStore({
             position,
             data: { label: "Face Consistency" },
           };
+        case "sequenceNode": {
+          const data: SequenceNodeData = { label: "Sequence", aspectRatio: "9:16", items: [], lastExport: null };
+          return { id: `sequence-${timestamp}`, type: "sequenceNode", position, data };
+        }
         case "entityNode":
           return {
             id: `entity-${timestamp}`,
@@ -1278,6 +1286,9 @@ function createBoardStore({
       },
       addScriptNode: (viewport) => {
         get().createNodeWithType("scriptNode", viewport);
+      },
+      addSequenceNode: (viewport) => {
+        get().createNodeWithType("sequenceNode", viewport);
       },
       addEntityNode: (viewport) => {
         get().createNodeWithType("entityNode", viewport);
