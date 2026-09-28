@@ -73,6 +73,45 @@ function sliceAudio(buffer: AudioBuffer, bufferStart: number, from: number, to: 
   return sliced;
 }
 
+function concatAudio(slices: AudioBuffer[], label: string): AudioBuffer {
+  const [first] = slices;
+  const mismatched = slices.find(
+    (slice) => slice.sampleRate !== first.sampleRate || slice.numberOfChannels !== first.numberOfChannels,
+  );
+  if (mismatched) {
+    throw new SequenceRenderError(`${label}: the audio track changes format mid-clip`);
+  }
+  const joined = new AudioBuffer({
+    length: slices.reduce((sum, slice) => sum + slice.length, 0),
+    numberOfChannels: first.numberOfChannels,
+    sampleRate: first.sampleRate,
+  });
+  let offset = 0;
+  for (const slice of slices) {
+    for (let channel = 0; channel < slice.numberOfChannels; channel += 1) {
+      joined.copyToChannel(slice.getChannelData(channel), channel, offset);
+    }
+    offset += slice.length;
+  }
+  return joined;
+}
+
+// Resamples and up/down-mixes to the output format with the browser's own
+// audio engine; mono is spread to both stereo channels.
+async function toOutputFormat(buffer: AudioBuffer): Promise<AudioBuffer> {
+  if (buffer.sampleRate === SAMPLE_RATE && buffer.numberOfChannels === CHANNELS) return buffer;
+  const context = new OfflineAudioContext({
+    numberOfChannels: CHANNELS,
+    length: Math.max(1, Math.round(buffer.duration * SAMPLE_RATE)),
+    sampleRate: SAMPLE_RATE,
+  });
+  const player = context.createBufferSource();
+  player.buffer = buffer;
+  player.connect(context.destination);
+  player.start();
+  return context.startRendering();
+}
+
 export async function renderSequence(input: {
   data: SequenceNodeData;
   mediaById: Record<string, SequenceMedia>;
@@ -87,11 +126,9 @@ export async function renderSequence(input: {
 
   const output = new Output({ format: new Mp4OutputFormat({ fastStart: "in-memory" }), target: new BufferTarget() });
   const videoSource = new CanvasSource(canvas, { codec: "avc", quality: QUALITY_HIGH });
-  const audioSource = new AudioBufferSource({
-    codec: "aac",
-    quality: QUALITY_HIGH,
-    transform: { sampleRate: SAMPLE_RATE, numberOfChannels: CHANNELS },
-  });
+  // Every buffer added must share one format, so clip audio is converted to
+  // SAMPLE_RATE / CHANNELS (see toOutputFormat) before it is added.
+  const audioSource = new AudioBufferSource({ codec: "aac", quality: QUALITY_HIGH });
   output.addVideoTrack(videoSource, { frameRate: SEQUENCE_LIMITS.fps });
   output.addAudioTrack(audioSource);
   await output.start();
@@ -153,11 +190,18 @@ export async function renderSequence(input: {
         let audioSeconds = 0;
         if (audioTrack) {
           const end = item.trimStart + seconds;
+          const slices: AudioBuffer[] = [];
+          let covered = item.trimStart;
           for await (const wrapped of new AudioBufferSink(audioTrack).buffers(item.trimStart, end)) {
-            const sliced = sliceAudio(wrapped.buffer, wrapped.timestamp, item.trimStart + audioSeconds, end);
+            const sliced = sliceAudio(wrapped.buffer, wrapped.timestamp, covered, end);
             if (!sliced) continue;
-            await audioSource.add(sliced);
-            audioSeconds += sliced.duration;
+            slices.push(sliced);
+            covered += sliced.duration;
+          }
+          if (slices.length > 0) {
+            const converted = await toOutputFormat(concatAudio(slices, label));
+            await audioSource.add(converted);
+            audioSeconds = converted.duration;
           }
         }
         // Keep audio exactly as long as the item's video, so later items stay in sync.
