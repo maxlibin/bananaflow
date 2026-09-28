@@ -1,6 +1,9 @@
 "use client";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { SequencePlayer } from "./sequence-player";
+import { SequenceTimeline } from "./sequence-timeline";
+import { useSequenceMedia } from "./use-sequence-media";
 
 export function SequencePanel({
   nodeId,
@@ -13,11 +16,26 @@ export function SequencePanel({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[720px] max-w-full" data-testid={`sequence-panel-${nodeId}`}>
+      <SheetContent side="right" className="w-[720px] max-w-full overflow-y-auto" data-testid={`sequence-panel-${nodeId}`}>
         <SheetHeader>
           <SheetTitle>Sequence</SheetTitle>
         </SheetHeader>
+        {open && <SequencePanelBody nodeId={nodeId} />}
       </SheetContent>
     </Sheet>
+  );
+}
+
+function SequencePanelBody({ nodeId }: { nodeId: string }) {
+  const { data, mediaById, check, loadError } = useSequenceMedia(nodeId);
+  return (
+    <div className="flex flex-col gap-3 p-4">
+      <SequencePlayer data={data} mediaById={mediaById} />
+      <div className="text-xs" data-testid="sequence-check">
+        {check.ok ? `${check.totalSeconds.toFixed(1)}s` : check.reason}
+      </div>
+      {loadError && <div className="text-xs text-red-600">{loadError}</div>}
+      <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} />
+    </div>
   );
 }
