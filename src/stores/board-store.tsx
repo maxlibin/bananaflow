@@ -18,9 +18,10 @@ import { createId } from "@paralleldrive/cuid2";
 import type { VideoModelSettings, VideoShot } from "../lib/video-models";
 import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
 import { applyShotPlans } from "../lib/script/shot-graph";
+import { assembleCut as assembleCutGraph } from "../lib/sequence/assemble-cut";
 import { buildStructureSkeleton } from "../lib/script/structures";
 import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
-import type { SequenceNodeData } from "../lib/sequence/types";
+import type { SequenceAspectRatio, SequenceNodeData } from "../lib/sequence/types";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -200,6 +201,8 @@ interface BoardState {
     videoModelId: string;
     aspectRatio: string;
   }) => void;
+  // Wires a script's shot videos, in story order, into its Sequence node.
+  assembleCut: (scriptNodeId: string) => void;
   updateNodeData: (
     nodeId: string,
     data: Record<string, unknown>
@@ -1337,6 +1340,23 @@ function createBoardStore({
             aspectRatio,
             nodes: state.nodes,
             edges: state.edges,
+            createId,
+          });
+          const nextNodes = attachCallbacksToNodes(graph.nodes);
+          const nextEdges = graph.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+          scheduleSaveDebounced(nextNodes, nextEdges);
+          return { ...state, nodes: nextNodes, edges: nextEdges };
+        });
+      },
+      assembleCut: (scriptNodeId) => {
+        set((state) => {
+          const scriptNode = state.nodes.find((node) => node.id === scriptNodeId);
+          if (!scriptNode) throw new Error(`Script node ${scriptNodeId} not found on this board`);
+          const graph = assembleCutGraph({
+            scriptNode,
+            nodes: state.nodes,
+            edges: state.edges,
+            aspectRatio: (scriptNode.data as ScriptNodeData).aspectRatio as SequenceAspectRatio,
             createId,
           });
           const nextNodes = attachCallbacksToNodes(graph.nodes);

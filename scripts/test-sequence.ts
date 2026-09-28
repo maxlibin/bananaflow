@@ -12,6 +12,8 @@ import {
   validateSequence,
 } from "../src/lib/sequence/model.ts";
 import type { SequenceItem } from "../src/lib/sequence/types.ts";
+import { assembleCut } from "../src/lib/sequence/assemble-cut.ts";
+import type { Edge } from "@xyflow/react";
 
 const node = (id: string, type: string, data: Record<string, unknown>): Node => ({
   id,
@@ -85,4 +87,41 @@ test("validateSequence totals the cut and names the item that blocks export", ()
   const long = Array.from({ length: 19 }, (_, index) => ({ sourceNodeId: `s${index}`, kind: "image" as const, holdSeconds: 10 }));
   const longMedia = Object.fromEntries(long.map((item) => [item.sourceNodeId, { kind: "image" as const, url: "u" }]));
   assert.deepEqual(validateSequence(long, longMedia), { ok: false, reason: "The cut is 190s; the limit is 180s" });
+});
+
+const script = node("s1", "scriptNode", { aspectRatio: "9:16" });
+const shot = (id: string, order: number) =>
+  node(id, "shotNode", { shot: { scriptNodeId: "s1", order, duration: 4 }, value: "v", stillPrompt: "s", images: [] });
+const video = (id: string) => node(id, "videoNode", { label: id });
+const wire = (source: string, target: string, targetHandle: string): Edge => ({ id: `${source}-${target}`, source, target, targetHandle });
+
+test("assembleCut wires each shot's video into a new sequence in story order", () => {
+  const nodes = [script, shot("sh2", 2), shot("sh1", 1), video("vb"), video("va")];
+  const edges = [wire("sh1", "va", "input"), wire("sh2", "vb", "input")];
+  let n = 0;
+  const graph = assembleCut({ scriptNode: script, nodes, edges, aspectRatio: "9:16", createId: () => `id${++n}` });
+  const sequence = graph.nodes.find((candidate) => candidate.type === "sequenceNode");
+  assert.ok(sequence);
+  const wired = graph.edges.filter((edge) => edge.target === sequence.id).map((edge) => edge.source);
+  assert.deepEqual(wired, ["va", "vb"]);
+  assert.deepEqual((sequence.data as { items: SequenceItem[] }).items.map((item) => item.sourceNodeId), ["va", "vb"]);
+});
+
+test("re-running assembleCut adds missing shots and keeps existing trims", () => {
+  const sequenceNode = node("seq", "sequenceNode", {
+    label: "Sequence",
+    aspectRatio: "9:16",
+    items: [{ sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3 }],
+    lastExport: null,
+    scriptNodeId: "s1",
+  });
+  const nodes = [script, shot("sh1", 1), shot("sh2", 2), video("va"), video("vb"), sequenceNode];
+  const edges = [wire("sh1", "va", "input"), wire("sh2", "vb", "input"), wire("va", "seq", "items")];
+  const graph = assembleCut({ scriptNode: script, nodes, edges, aspectRatio: "9:16", createId: () => "new" });
+  assert.equal(graph.nodes.filter((candidate) => candidate.type === "sequenceNode").length, 1);
+  const items = (graph.nodes.find((candidate) => candidate.id === "seq")!.data as { items: SequenceItem[] }).items;
+  assert.deepEqual(items, [
+    { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3 },
+    { sourceNodeId: "vb", kind: "video", trimStart: 0, trimEnd: null },
+  ]);
 });

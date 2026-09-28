@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createId } from "@paralleldrive/cuid2";
-import { Clapperboard, Loader2 } from "lucide-react";
+import { Clapperboard, ListVideo, Loader2 } from "lucide-react";
 import type { Node } from "@xyflow/react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -95,6 +95,7 @@ export function ScriptPanel({
   const { isReadOnly } = useReadOnly();
   const updateNodeData = useBoardStore((state) => state.updateNodeData);
   const applyShotPlans = useBoardStore((state) => state.applyShotPlans);
+  const assembleCut = useBoardStore((state) => state.assembleCut);
   const nodes = useBoardStore((state) => state.nodes);
   const addEntitiesFromScript = useBoardStore((state) => state.addEntitiesFromScript);
   const entities = nodes
@@ -451,6 +452,28 @@ export function ScriptPanel({
                 : `Break ${pendingScenes.length} scene${pendingScenes.length === 1 ? "" : "s"} into shots`}
             </Button>
             {error && <div className="w-full text-xs text-red-600">{error}</div>}
+          </div>
+        )}
+        {!isReadOnly && (
+          <div className="flex flex-wrap items-center gap-2 border-t p-3">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={breaking}
+              onClick={() => {
+                try {
+                  assembleCut(nodeId);
+                  setError(null);
+                } catch (caught) {
+                  setError(caught instanceof Error ? caught.message : String(caught));
+                }
+              }}
+              data-testid="script-assemble-cut"
+            >
+              <ListVideo className="h-3.5 w-3.5" />
+              Assemble cut
+            </Button>
+            {!scriptAssistant && error && <div className="w-full text-xs text-red-600">{error}</div>}
           </div>
         )}
       </SheetContent>
