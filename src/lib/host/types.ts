@@ -176,6 +176,8 @@ export type UploadAssetInput = {
   contentType: string;
 };
 
+export type DirectUpload = { uploadUrl: string; method: "PUT"; headers: Record<string, string> };
+
 export type UploadAssetResult = {
   url: string;
   pathname: string;
@@ -232,6 +234,13 @@ export type HostAdapter = {
     // Turns a stored asset URL (possibly app-relative) into an absolute URL
     // this server can fetch, e.g. to send reference images to a provider.
     resolveAssetUrl(url: string): string;
+    // Direct browser-to-storage upload for large files (the request body
+    // limit of serverless hosts is a few MB). `size` is enforced.
+    createUpload(input: { key: string; contentType: string; size: number }): Promise<DirectUpload>;
+    // Byte size of a stored object, or null when it does not exist.
+    getAssetSize(key: string): Promise<number | null>;
+    // Public URL for a key written by uploadAsset or createUpload.
+    assetUrl(key: string): string;
   };
   callbacks: {
     publicBaseUrl(): string | null;

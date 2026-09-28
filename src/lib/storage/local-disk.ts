@@ -1,6 +1,7 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ObjectStorage } from "./types";
+import { signUploadToken } from "./upload-token";
 
 export type LocalDiskStorageConfig = {
   // Absolute directory that receives uploaded files.
@@ -10,6 +11,8 @@ export type LocalDiskStorageConfig = {
   appOrigin: string;
   // URL path under which `rootDir` is served, e.g. /uploads.
   publicPath: string;
+  // Signs direct-upload tokens checked by src/app/api/uploads/[...key].
+  uploadSecret: string;
 };
 
 export class UnsafeStorageKeyError extends Error {
@@ -39,13 +42,35 @@ export function createLocalDiskStorage(config: LocalDiskStorageConfig): ObjectSt
   const appOrigin = config.appOrigin.replace(/\/$/, "");
   const appHost = new URL(appOrigin).host;
 
+  const encodeKey = (key: string) => key.split("/").map(encodeURIComponent).join("/");
+  const assetUrl = (key: string) => `${publicPath}/${encodeKey(key)}`;
+
   return {
     async uploadAsset(input) {
       const target = resolveInsideRoot(rootDir, input.key);
       await mkdir(path.dirname(target), { recursive: true });
       await writeFile(target, input.body);
-      const encodedKey = input.key.split("/").map(encodeURIComponent).join("/");
-      return { url: `${publicPath}/${encodedKey}`, pathname: input.key };
+      return { url: assetUrl(input.key), pathname: input.key };
+    },
+    assetUrl,
+    async createUpload(input) {
+      const token = signUploadToken(config.uploadSecret, {
+        key: input.key,
+        size: input.size,
+        expiresAt: Date.now() + 10 * 60_000,
+      });
+      return {
+        uploadUrl: `/api/uploads/${encodeKey(input.key)}?token=${token}`,
+        method: "PUT",
+        headers: { "Content-Type": input.contentType },
+      };
+    },
+    async getAssetSize(key) {
+      const info = await stat(resolveInsideRoot(rootDir, key)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+      return info ? info.size : null;
     },
     isAllowedAssetUrl(url) {
       return url.host === appHost && url.pathname.startsWith(`${publicPath}/`);

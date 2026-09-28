@@ -14,6 +14,11 @@ if (!appOrigin) {
   throw new Error("APP_ORIGIN is not set (e.g. http://localhost:3000)");
 }
 
+const appSecret = process.env.APP_SECRET;
+if (!appSecret) {
+  throw new Error("APP_SECRET is not set. Generate one with `openssl rand -hex 32` and add it to .env.");
+}
+
 const keys = createLocalKeys(db, LOCAL_PROVIDERS);
 
 export const host: HostAdapter = {
@@ -25,6 +30,6 @@ export const host: HostAdapter = {
   keys,
   policy: localPolicy,
   limits: localLimits,
-  storage: createLocalStorage(appOrigin),
+  storage: createLocalStorage(appOrigin, appSecret),
   callbacks: localCallbacks,
 };
