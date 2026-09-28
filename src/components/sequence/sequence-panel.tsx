@@ -2,6 +2,7 @@
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { SequencePlayer } from "./sequence-player";
+import { SequenceExport } from "./sequence-export";
 import { SequenceTimeline } from "./sequence-timeline";
 import { useSequenceMedia } from "./use-sequence-media";
 
@@ -36,6 +37,7 @@ function SequencePanelBody({ nodeId }: { nodeId: string }) {
       </div>
       {loadError && <div className="text-xs text-red-600">{loadError}</div>}
       <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} />
+      <SequenceExport nodeId={nodeId} data={data} mediaById={mediaById} check={check} />
     </div>
   );
 }

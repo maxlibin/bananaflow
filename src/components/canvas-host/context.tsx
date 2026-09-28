@@ -6,6 +6,7 @@ import type * as bulkRuns from "../../lib/actions/bulk-runs";
 import type * as media from "../../lib/actions/media";
 import type * as runHistory from "../../lib/actions/run-history";
 import type * as script from "../../lib/actions/script";
+import type * as sequence from "../../lib/actions/sequence";
 import type * as userPreferences from "../../lib/actions/user-preferences";
 import type { AdvancedOpId } from "../../lib/advanced-ops";
 import type { GenerationFeature } from "../../lib/host/features";
@@ -42,6 +43,8 @@ export type CanvasActions = {
   critiqueScript: WithoutHost<typeof script.critiqueScript>;
   extractScriptEntities: WithoutHost<typeof script.extractScriptEntities>;
   breakScriptIntoShots: WithoutHost<typeof script.breakScriptIntoShots>;
+  createExportUpload: WithoutHost<typeof sequence.createExportUpload>;
+  saveSequenceExport: WithoutHost<typeof sequence.saveSequenceExport>;
 };
 
 export type CostPreviewInput =
