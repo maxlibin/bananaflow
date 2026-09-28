@@ -40,6 +40,8 @@ Single Next.js 16 app that is also an npm package (`bananaflow`) consumed by the
 5. Synchronous result: `completeImageJob` at once, respond `status: "completed"`. Asynchronous: store the task id; the poller (or a provider webhook bound through `lib/routes/provider-webhooks.ts`) calls `applyImageTaskStatus` with the normalised status.
 6. `completeImageJob`: materialise assets, `host.storage.uploadAsset`, persist media, `adjustBoardStorage`, `host.policy.afterGenerate(...)`.
 
+Jobs settle exactly once: completing, failing and cancelling (`markImageJob*` / `markVideoJob*`) are compare-and-set updates from `pending`/`processing`, and only the caller that wins refunds (`failImageJob`, `cancelImageJob`) or delivers. A completion that loses the race deletes the media it saved, so a cancel can never end with both a refund and an image.
+
 Adding a model: add a server entry to `model-registry.ts` (provider + providerModel + capabilities) and a client entry plus setting options to `model-options.ts`; the local host composes both in `src/host/local/providers.ts`. Adding a provider: implement `Provider` in `lib/providers/` and add it to `LOCAL_PROVIDERS`.
 
 ## Conventions

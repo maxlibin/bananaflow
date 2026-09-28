@@ -2,6 +2,7 @@ import { and, eq, inArray, lt } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import {
   imageJobs,
+  media as mediaTable,
   type ImageJob,
   type MediaSourceValue,
 } from "../db/schema";
@@ -80,54 +81,67 @@ export async function findImageJobForUser(
   return row ?? null;
 }
 
+const OPEN_STATUSES = ["pending", "processing"] as const;
+
+// Settling a job is a compare-and-set: the webhook, the poller, the cancel
+// route and the creating request can all race on one job, and only the
+// caller whose update wins may refund or deliver. Without it a cancel that
+// lands while a completion is uploading refunds the job and then the
+// completion delivers the image anyway.
+async function settleImageJob(
+  db: EngineDatabase,
+  jobId: string,
+  values: Partial<typeof imageJobs.$inferInsert>,
+): Promise<boolean> {
+  const settled = await db
+    .update(imageJobs)
+    .set({ ...values, completedAt: new Date() })
+    .where(and(eq(imageJobs.id, jobId), inArray(imageJobs.status, [...OPEN_STATUSES])))
+    .returning({ id: imageJobs.id });
+  return settled.length === 1;
+}
+
+// Records the provider task, and moves the job to processing only if nothing
+// settled it (e.g. a cancel) while the provider call was in flight.
 export async function setImageJobProviderTaskId(
   db: EngineDatabase,
   jobId: string,
   providerTaskId: string,
 ): Promise<void> {
+  await db.update(imageJobs).set({ providerTaskId }).where(eq(imageJobs.id, jobId));
   await db
     .update(imageJobs)
-    .set({ providerTaskId, status: "processing" })
-    .where(eq(imageJobs.id, jobId));
+    .set({ status: "processing" })
+    .where(and(eq(imageJobs.id, jobId), eq(imageJobs.status, "pending")));
 }
 
 export async function markImageJobCompleted(
   db: EngineDatabase,
   jobId: string,
   result: { mediaIds: string[]; blobPaths: string[]; blobUrls: string[] },
-): Promise<void> {
-  await db
-    .update(imageJobs)
-    .set({
-      status: "completed",
-      resultMediaIds: result.mediaIds,
-      resultBlobPaths: result.blobPaths,
-      resultBlobUrls: result.blobUrls,
-      completedAt: new Date(),
-    })
-    .where(eq(imageJobs.id, jobId));
+): Promise<boolean> {
+  return settleImageJob(db, jobId, {
+    status: "completed",
+    resultMediaIds: result.mediaIds,
+    resultBlobPaths: result.blobPaths,
+    resultBlobUrls: result.blobUrls,
+  });
 }
 
 export async function markImageJobFailed(
   db: EngineDatabase,
   jobId: string,
   errorMessage: string,
-): Promise<void> {
-  await db
-    .update(imageJobs)
-    .set({ status: "failed", errorMessage, completedAt: new Date() })
-    .where(eq(imageJobs.id, jobId));
+): Promise<boolean> {
+  return settleImageJob(db, jobId, { status: "failed", errorMessage });
 }
 
 export async function markImageJobCancelled(
   db: EngineDatabase,
   jobId: string,
-  errorMessage = "Cancelled by user",
-): Promise<void> {
-  await db
-    .update(imageJobs)
-    .set({ status: "cancelled", errorMessage, completedAt: new Date() })
-    .where(eq(imageJobs.id, jobId));
+  errorMessage: string,
+): Promise<boolean> {
+  return settleImageJob(db, jobId, { status: "cancelled", errorMessage });
 }
 
 export async function findStaleImageJobs(
@@ -146,11 +160,14 @@ export async function findStaleImageJobs(
     );
 }
 
+// Fails the job and refunds its reservation, unless another caller settled
+// it first.
 export async function failImageJob(
   host: HostAdapter,
   job: Pick<ImageJob, "id" | "userId" | "reservedMicro">,
   message: string,
 ): Promise<void> {
+  if (!(await markImageJobFailed(host.db, job.id, message))) return;
   await host.policy.afterGenerate({
     kind: "image",
     status: "failed",
@@ -159,7 +176,24 @@ export async function failImageJob(
     reservedMicro: job.reservedMicro,
     reason: message,
   });
-  await markImageJobFailed(host.db, job.id, message);
+}
+
+// Cancels the job for its owner and refunds the reservation, unless another
+// caller settled it first. Returns whether this call cancelled it.
+export async function cancelImageJob(
+  host: HostAdapter,
+  job: Pick<ImageJob, "id" | "userId" | "reservedMicro">,
+): Promise<boolean> {
+  if (!(await markImageJobCancelled(host.db, job.id, "Cancelled by user"))) return false;
+  await host.policy.afterGenerate({
+    kind: "image",
+    status: "cancelled",
+    userId: job.userId,
+    jobId: job.id,
+    reservedMicro: job.reservedMicro,
+    reason: "User cancelled",
+  });
+  return true;
 }
 
 export type FinalizeImageOutcome =
@@ -253,11 +287,25 @@ export async function completeImageJob(
     })),
   });
 
-  await markImageJobCompleted(host.db, job.id, {
+  const won = await markImageJobCompleted(host.db, job.id, {
     mediaIds: persisted.mediaIds,
     blobPaths: uploaded.map((u) => u.pathname),
     blobUrls: uploaded.map((u) => u.url),
   });
+  if (!won) {
+    // Cancelled, failed or completed elsewhere while this call was uploading:
+    // that outcome stands, so the media saved here must not reach the user.
+    if (persisted.mediaIds.length > 0) {
+      await host.db.delete(mediaTable).where(inArray(mediaTable.id, persisted.mediaIds));
+    }
+    console.warn("Image job settled elsewhere during completion; discarded its media", {
+      jobId: job.id,
+      orphanedBlobPaths: uploaded.map((u) => u.pathname),
+    });
+    const settled = await findImageJob(host.db, job.id);
+    if (!settled) throw new Error(`Image job ${job.id} disappeared while completing`);
+    return outcomeForTerminalJob(settled);
+  }
 
   await host.policy.afterGenerate({
     kind: "image",

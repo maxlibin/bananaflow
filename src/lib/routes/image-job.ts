@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { inArray } from "drizzle-orm";
 import { media as mediaTable } from "../../db/schema";
 import type { HostAdapter } from "../host/types";
-import { findImageJobForUser, markImageJobCancelled } from "../image-jobs";
+import { cancelImageJob, findImageJobForUser } from "../image-jobs";
 
 type Context = { params: Promise<{ jobId: string }> };
 
@@ -78,15 +78,10 @@ export function createImageJobRoute(host: HostAdapter) {
     ) {
       return NextResponse.json({ ok: true, status: job.status });
     }
-    await host.policy.afterGenerate({
-      kind: "image",
-      status: "cancelled",
-      userId,
-      jobId: job.id,
-      reservedMicro: job.reservedMicro,
-      reason: "User cancelled",
-    });
-    await markImageJobCancelled(host.db, job.id);
+    if (!(await cancelImageJob(host, job))) {
+      const settled = await findImageJobForUser(host.db, jobId, userId);
+      return NextResponse.json({ ok: true, status: settled?.status ?? job.status });
+    }
     return NextResponse.json({ ok: true, status: "cancelled" });
   }
 
