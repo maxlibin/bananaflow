@@ -28,10 +28,11 @@ const nodes = [
     data: {
       label: "Sequence",
       aspectRatio: "9:16",
+      voice: null,
       items: [
-        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null },
-        { sourceNodeId: id("vs"), kind: "video", trimStart: 0, trimEnd: null },
-        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1 },
+        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+        { sourceNodeId: id("vs"), kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1, voiceover: null },
       ],
       lastExport: null,
     },

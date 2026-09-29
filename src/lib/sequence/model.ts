@@ -5,7 +5,9 @@ import {
   type SequenceAspectRatio,
   type SequenceItem,
   type SequenceMedia,
+  type SequenceVoice,
 } from "./types";
+import { voiceoverStatus } from "./voiceover";
 
 export class InvalidSequenceEditError extends Error {
   constructor(message: string) {
@@ -46,21 +48,32 @@ export function sourceMedia(node: Node): SequenceMedia | null {
 
 // Edges decide membership: items of disconnected sources are dropped, new
 // sources are appended in `sources` order, existing items keep their edits.
-export function syncSequenceItems(items: SequenceItem[], sources: Node[]): SequenceItem[] {
+// `voiceLines` pre-fills new items' voiceover from the Shot node feeding
+// their source (see shotVoiceLines).
+export function syncSequenceItems(
+  items: SequenceItem[],
+  sources: Node[],
+  voiceLines: Record<string, string>,
+): SequenceItem[] {
   const connected = new Map<string, "video" | "image">();
   for (const source of sources) {
     const kind = sourceKind(source);
     if (kind) connected.set(source.id, kind);
   }
-  const kept = items.filter((item) => connected.get(item.sourceNodeId) === item.kind);
+  // Items saved before voiceover existed have no `voiceover` field.
+  const kept = items
+    .filter((item) => connected.get(item.sourceNodeId) === item.kind)
+    .map((item) => ({ ...item, voiceover: item.voiceover ?? null }));
   const keptIds = new Set(kept.map((item) => item.sourceNodeId));
   const added: SequenceItem[] = [];
   for (const [sourceNodeId, kind] of connected) {
     if (keptIds.has(sourceNodeId)) continue;
+    const line = voiceLines[sourceNodeId];
+    const voiceover = line ? { text: line, audio: null } : null;
     added.push(
       kind === "video"
-        ? { sourceNodeId, kind, trimStart: 0, trimEnd: null }
-        : { sourceNodeId, kind, holdSeconds: SEQUENCE_LIMITS.defaultHoldSeconds },
+        ? { sourceNodeId, kind, trimStart: 0, trimEnd: null, voiceover }
+        : { sourceNodeId, kind, holdSeconds: SEQUENCE_LIMITS.defaultHoldSeconds, voiceover },
     );
   }
   return [...kept, ...added];
@@ -122,6 +135,7 @@ export function itemSeconds(item: SequenceItem, media: SequenceMedia): number {
 export function validateSequence(
   items: SequenceItem[],
   mediaById: Record<string, SequenceMedia | null>,
+  voice: SequenceVoice | null,
 ): SequenceCheck {
   if (items.length === 0) return { ok: false, reason: "Add at least one clip or image" };
   let totalSeconds = 0;
@@ -140,7 +154,17 @@ export function validateSequence(
         return { ok: false, reason: `${label} ends at ${end}s but its clip is only ${media.seconds}s long` };
       }
     }
-    totalSeconds += itemSeconds(item, media);
+    const seconds = itemSeconds(item, media);
+    const status = voiceoverStatus(item.voiceover ?? null, voice, seconds);
+    if (status === "unvoiced") return { ok: false, reason: `${label}'s voiceover is not voiced yet` };
+    if (status === "stale") {
+      return { ok: false, reason: voice ? `${label}'s voiceover needs voicing again` : "Pick a voice for the voiceover" };
+    }
+    if (status === "too-long") {
+      const spoken = (item.voiceover?.audio?.seconds ?? 0).toFixed(1);
+      return { ok: false, reason: `${label}'s voiceover is ${spoken}s but the clip is ${seconds.toFixed(1)}s` };
+    }
+    totalSeconds += seconds;
   }
   const { minTotalSeconds, maxTotalSeconds } = SEQUENCE_LIMITS;
   if (totalSeconds < minTotalSeconds) return { ok: false, reason: `The cut is ${totalSeconds}s; it needs at least ${minTotalSeconds}s` };
