@@ -59,7 +59,8 @@ export type CostPreviewInput =
       hasImage: boolean;
     }
   | { kind: "advanced"; op: AdvancedOpId }
-  | { kind: "bulk"; model: string; count: number };
+  | { kind: "bulk"; model: string; count: number }
+  | { kind: "speech"; model: string; characters: number };
 
 // Whole credits, not rounded. Render sites apply their own rounding.
 export type CostPreview = { credits: number };

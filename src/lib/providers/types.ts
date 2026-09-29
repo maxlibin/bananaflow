@@ -73,6 +73,15 @@ export type VideoTaskSpec = {
   generateAudio: boolean;
 };
 
+export type SpeechResult = { bytes: Buffer; contentType: string; ext: "mp3" | "wav" };
+
+export class SpeechProviderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpeechProviderError";
+  }
+}
+
 export type ProviderKeyCheck =
   | { ok: true }
   // `status` is the provider's own error code when it returns one in the
@@ -96,6 +105,14 @@ export type Provider = {
     hasImage: boolean;
   }): VideoTaskSpec;
   createVideoTask(input: VideoTaskInput): Promise<TaskStart>;
+  // Text to speech; throws SpeechProviderError with the provider's status and message.
+  createSpeech(input: {
+    model: string;
+    providerModel: string;
+    text: string;
+    voiceId: string;
+    secret: string;
+  }): Promise<SpeechResult>;
   fetchVideoTask(model: string, taskId: string, secret: string): Promise<TaskStatus>;
   parseVideoCallback(model: string, payload: Record<string, unknown>): TaskStatus;
   checkKey(secret: string): Promise<ProviderKeyCheck>;

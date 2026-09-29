@@ -8,6 +8,8 @@ import {
   type ProviderKeyCheck,
   type TaskStart,
   type TaskStatus,
+  SpeechProviderError,
+  type SpeechResult,
   type VideoTaskInput,
   type VideoTaskSpec,
 } from "./types";
@@ -209,6 +211,16 @@ async function checkKey(secret: string): Promise<ProviderKeyCheck> {
   return { ok: false, status: res.status, body: await readError(res) };
 }
 
+async function createSpeech(input: { providerModel: string; text: string; voiceId: string; secret: string }): Promise<SpeechResult> {
+  const res = await fetch(`${OPENAI_API_BASE_URL}/audio/speech`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${input.secret}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: input.providerModel, voice: input.voiceId, input: input.text, response_format: "mp3" }),
+  });
+  if (!res.ok) throw new SpeechProviderError(`OpenAI speech failed (${res.status}): ${await readError(res)}`);
+  return { bytes: Buffer.from(await res.arrayBuffer()), contentType: "audio/mpeg", ext: "mp3" };
+}
+
 export const openaiProvider: Provider = {
   info: {
     id: "openai",
@@ -227,6 +239,7 @@ export const openaiProvider: Provider = {
   },
   describeVideoTask,
   createVideoTask,
+  createSpeech,
   fetchVideoTask,
   parseVideoCallback() {
     throw new UnsupportedCallbackError("openai");

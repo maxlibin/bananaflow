@@ -109,3 +109,27 @@ export const OPENAI_VIDEO_MODELS: Record<string, VideoModelInfo> = {
     settings: SORA_SETTINGS,
   },
 };
+
+export type SpeechVoice = { id: string; label: string; sampleUrl: string | null };
+
+export type SpeechModelInfo = {
+  label: string;
+  provider: ProviderId;
+  providerModel: string;
+  maxCharacters: number;
+  voices: SpeechVoice[];
+};
+
+const OPENAI_VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"];
+const GEMINI_VOICES = ["Kore", "Puck", "Charon", "Fenrir", "Aoede", "Leda", "Orus", "Zephyr"];
+const voiceList = (ids: string[]): SpeechVoice[] =>
+  ids.map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1), sampleUrl: null }));
+
+export const OPENAI_SPEECH_MODELS: Record<string, SpeechModelInfo> = {
+  "openai/gpt-4o-mini-tts": { label: "OpenAI TTS", provider: "openai", providerModel: "gpt-4o-mini-tts", maxCharacters: 600, voices: voiceList(OPENAI_VOICES) },
+};
+
+export const GOOGLE_SPEECH_MODELS: Record<string, SpeechModelInfo> = {
+  "google/gemini-3.8-flash-tts": { label: "Gemini TTS", provider: "google", providerModel: "gemini-3.8-flash-tts", maxCharacters: 600, voices: voiceList(GEMINI_VOICES) },
+  "google/gemini-3.8-flash-lite-tts": { label: "Gemini TTS Lite", provider: "google", providerModel: "gemini-3.8-flash-lite-tts", maxCharacters: 600, voices: voiceList(GEMINI_VOICES) },
+};

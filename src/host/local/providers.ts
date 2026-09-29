@@ -8,13 +8,17 @@ import {
   OPENAI_IMAGE_SETTING_OPTIONS,
   OPENAI_VIDEO_MODEL_OPTIONS,
   OPENAI_VIDEO_SETTING_OPTIONS,
+  speechOptions,
 } from "../../lib/model-options";
 import {
   GOOGLE_IMAGE_MODELS,
+  GOOGLE_SPEECH_MODELS,
   GOOGLE_VIDEO_MODELS,
   OPENAI_IMAGE_MODELS,
+  OPENAI_SPEECH_MODELS,
   OPENAI_VIDEO_MODELS,
   type ImageModelInfo,
+  type SpeechModelInfo,
   type VideoModelInfo,
 } from "../../lib/model-registry";
 import { googleProvider } from "../../lib/providers/google";
@@ -36,6 +40,11 @@ export const LOCAL_VIDEO_MODELS: Record<string, VideoModelInfo> = {
   ...OPENAI_VIDEO_MODELS,
 };
 
+export const LOCAL_SPEECH_MODELS: Record<string, SpeechModelInfo> = {
+  ...GOOGLE_SPEECH_MODELS,
+  ...OPENAI_SPEECH_MODELS,
+};
+
 // Client-side picker lists. Kept next to the server maps so both sides
 // describe the same models.
 export const LOCAL_CANVAS_MODELS: CanvasModels = {
@@ -44,4 +53,5 @@ export const LOCAL_CANVAS_MODELS: CanvasModels = {
   imageSettings: { ...GOOGLE_IMAGE_SETTING_OPTIONS, ...OPENAI_IMAGE_SETTING_OPTIONS },
   video: [...GOOGLE_VIDEO_MODEL_OPTIONS, ...OPENAI_VIDEO_MODEL_OPTIONS],
   videoSettings: { ...GOOGLE_VIDEO_SETTING_OPTIONS, ...OPENAI_VIDEO_SETTING_OPTIONS },
+  speech: speechOptions(LOCAL_SPEECH_MODELS),
 };

@@ -8,6 +8,8 @@ import {
   type ProviderKeyCheck,
   type TaskStart,
   type TaskStatus,
+  SpeechProviderError,
+  type SpeechResult,
   type VideoTaskInput,
   type VideoTaskSpec,
 } from "./types";
@@ -200,6 +202,53 @@ async function checkKey(secret: string): Promise<ProviderKeyCheck> {
   return { ok: false, status: res.status, body: await readError(res) };
 }
 
+type SpeechResponse = { candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }> };
+
+// Older TTS models return raw 16-bit PCM ("audio/L16;...;rate=24000"); newer
+// ones return WAV. Raw PCM is wrapped in a WAV header so every result plays.
+function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.byteLength, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.byteLength, 40);
+  return Buffer.concat([header, pcm]);
+}
+
+async function createSpeech(input: { providerModel: string; text: string; voiceId: string; secret: string }): Promise<SpeechResult> {
+  const res = await fetch(`${GOOGLE_API_BASE_URL}/models/${encodeURIComponent(input.providerModel)}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": input.secret, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: input.text }] }],
+      generationConfig: {
+        responseModalities: ["AUDIO"],
+        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: input.voiceId } } },
+      },
+    }),
+  });
+  if (!res.ok) throw new SpeechProviderError(`Gemini speech failed (${res.status}): ${await readError(res)}`);
+  const body = (await res.json()) as SpeechResponse;
+  const inline = body.candidates?.[0]?.content?.parts?.find((part) => part.inlineData)?.inlineData;
+  if (!inline?.data || !inline.mimeType) throw new SpeechProviderError("Gemini returned no audio for this line");
+  const bytes = Buffer.from(inline.data, "base64");
+  if (inline.mimeType.startsWith("audio/wav")) return { bytes, contentType: "audio/wav", ext: "wav" };
+  const rate = /rate=(\d+)/.exec(inline.mimeType)?.[1];
+  if (inline.mimeType.startsWith("audio/L16") && rate) {
+    return { bytes: pcmToWav(bytes, Number(rate)), contentType: "audio/wav", ext: "wav" };
+  }
+  throw new SpeechProviderError(`Gemini returned unsupported audio "${inline.mimeType}"`);
+}
+
 export const googleProvider: Provider = {
   info: {
     id: "google",
@@ -217,6 +266,7 @@ export const googleProvider: Provider = {
   },
   describeVideoTask,
   createVideoTask,
+  createSpeech,
   fetchVideoTask,
   parseVideoCallback() {
     throw new UnsupportedCallbackError("google");
