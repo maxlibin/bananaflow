@@ -72,3 +72,24 @@ export function duckingGain(time: number, voiceStart: number, voiceEnd: number, 
   }
   return 1;
 }
+
+// Mixes a voice (starting at the item start) over the item's clip audio.
+// Both are planar channels at `sampleRate`; the clip length is kept.
+export function mixVoice(
+  clip: Float32Array[],
+  voice: Float32Array[],
+  sampleRate: number,
+  itemSeconds: number,
+): Float32Array<ArrayBuffer>[] {
+  const voiceEnd = (voice[0]?.length ?? 0) / sampleRate;
+  return clip.map((channel, index) => {
+    const spoken = voice[index] ?? voice[0];
+    const mixed = new Float32Array(channel.length);
+    for (let sample = 0; sample < channel.length; sample += 1) {
+      const time = sample / sampleRate;
+      const value = channel[sample] * duckingGain(time, 0, voiceEnd, itemSeconds) + (spoken?.[sample] ?? 0);
+      mixed[sample] = Math.max(-1, Math.min(1, value));
+    }
+    return mixed;
+  });
+}

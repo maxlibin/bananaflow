@@ -12,6 +12,7 @@ import {
   shotVoiceLines,
   voiceoverStatus,
 } from "../src/lib/sequence/voiceover.ts";
+import { mixVoice } from "../src/lib/sequence/voiceover.ts";
 
 const voice = { model: "openai/gpt-4o-mini-tts", voiceId: "coral" };
 const audio = (text: string, seconds: number) => ({
@@ -109,4 +110,16 @@ test("duckingGain lowers clip audio under the voice with short ramps", () => {
   assert.ok(Math.abs(duckingGain(3.075, 1, 3, 5) - (1 + DUCK_LEVEL) / 2) < 1e-9);
   // A line at the item start is ducked from the first sample; no ramp before 0.
   assert.equal(duckingGain(0, 0, 2, 5), DUCK_LEVEL);
+});
+
+test("mixVoice ducks the clip under the voice and clamps the sum", () => {
+  const rate = 100;
+  const clip = [new Float32Array(300).fill(0.8), new Float32Array(300).fill(0.8)];
+  const voice = [new Float32Array(100).fill(0.9), new Float32Array(100).fill(0.9)];
+  const [left] = mixVoice(clip, voice, rate, 3);
+  assert.ok(Math.abs(left[50] - Math.min(1, 0.8 * DUCK_LEVEL + 0.9)) < 1e-6);
+  assert.ok(Math.abs(left[250] - 0.8) < 1e-6);
+  assert.equal(left.length, 300);
+  const loud = mixVoice([new Float32Array(10).fill(1)], [new Float32Array(10).fill(1)], 10, 1);
+  assert.ok(loud[0].every((sample) => sample <= 1));
 });
