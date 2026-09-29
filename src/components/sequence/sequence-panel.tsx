@@ -3,6 +3,7 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { SequencePlayer } from "./sequence-player";
 import { SequenceExport } from "./sequence-export";
+import { SequenceVoicePicker } from "./sequence-voice";
 import { SequenceTimeline } from "./sequence-timeline";
 import { useSequenceMedia } from "./use-sequence-media";
 
@@ -31,12 +32,13 @@ function SequencePanelBody({ nodeId }: { nodeId: string }) {
   const { data, mediaById, check, loadError } = useSequenceMedia(nodeId);
   return (
     <div className="flex flex-col gap-3 p-4">
+      <SequenceVoicePicker nodeId={nodeId} data={data} mediaById={mediaById} />
       <SequencePlayer data={data} mediaById={mediaById} />
       <div className="text-xs" data-testid="sequence-check">
         {check.ok ? `${check.totalSeconds.toFixed(1)}s` : check.reason}
       </div>
       {loadError && <div className="text-xs text-red-600">{loadError}</div>}
-      <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} />
+      <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} voice={data.voice ?? null} />
       <SequenceExport nodeId={nodeId} data={data} mediaById={mediaById} check={check} />
     </div>
   );
