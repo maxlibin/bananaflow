@@ -155,3 +155,12 @@ test("captions are burned into the export and downloadable as SRT", async ({ pag
   expect(white.title.onScreen).toBeGreaterThan(1000);
   expect(white.title.spoken).toBeLessThan(50);
 });
+
+test("the preview player keeps its size with the caption overlay", async ({ page }) => {
+  const boardId = execFileSync("npx", ["tsx", "--env-file=.env", "e2e/seed-sequence-board.mts"]).toString().trim();
+  await page.goto(`/board/${boardId}`);
+  await page.getByTestId("sequence-open-panel").click();
+  const box = await page.getByTestId("sequence-player").boundingBox();
+  expect(box!.width).toBeGreaterThan(200);
+  expect(box!.height).toBeGreaterThan(350);
+});

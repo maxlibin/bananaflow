@@ -133,3 +133,15 @@ test("new items take their shot's on-screen text; legacy items read as none", ()
   const legacy = [{ sourceNodeId: "va", kind: "video", trimStart: 0, trimEnd: null, voiceover: null }] as unknown as SequenceItem[];
   assert.equal(syncSequenceItems(legacy, [nodes[2]], lines)[0].onScreenText, null);
 });
+
+// Final-review fixes.
+import { activeCues } from "../src/lib/sequence/captions.ts";
+
+test("the preview shows only the current item's cues, even past a trimmed clip's end", () => {
+  const cues = captionCues(cut(3, line), media, voice, both);
+  const clipEnd = 151 / 30;
+  assert.deepEqual(activeCues(cues, 1, 0, clipEnd).map((cue) => cue.text), ["Meet the banana"]);
+  // The clip plays ~0.2s past its end before the player advances.
+  assert.deepEqual(activeCues(cues, clipEnd + 0.2, 0, clipEnd), []);
+  assert.deepEqual(activeCues(cues, clipEnd + 0.2, clipEnd, clipEnd + 68 / 30).map((cue) => cue.text), ["50% off today"]);
+});

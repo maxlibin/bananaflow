@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { Button } from "../ui/button";
-import { CAPTION_LAYOUT, CAPTION_MAX_WIDTH, CAPTION_OUTLINE, captionCues } from "../../lib/sequence/captions";
+import { CAPTION_LAYOUT, CAPTION_MAX_WIDTH, CAPTION_OUTLINE, activeCues, captionCues } from "../../lib/sequence/captions";
 import { itemFrames, itemSeconds } from "../../lib/sequence/model";
 import { SEQUENCE_LIMITS, SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "../../lib/sequence/types";
 import { DUCK_LEVEL, voiceoverStatus } from "../../lib/sequence/voiceover";
@@ -38,10 +38,11 @@ export function SequencePlayer({
       offset += itemFrames(entry, known[entry.sourceNodeId]) / SEQUENCE_LIMITS.fps;
       return start;
     });
-    return { starts, cues: captionCues(data.items, known, data.voice ?? null, data.captions ?? null) };
+    return { starts: [...starts, offset], cues: captionCues(data.items, known, data.voice ?? null, data.captions ?? null) };
   }, [data.items, data.voice, data.captions, mediaById]);
-  const time = (timeline?.starts[index] ?? 0) + clock;
-  const activeCues = timeline?.cues.filter((cue) => cue.start <= time && time < cue.end) ?? [];
+  const showing = timeline
+    ? activeCues(timeline.cues, timeline.starts[index] + clock, timeline.starts[index], timeline.starts[index + 1])
+    : [];
 
   const next = () => {
     setClock(0);
@@ -120,12 +121,19 @@ export function SequencePlayer({
     <div className="flex flex-col items-center gap-2">
       <div
         className="relative flex items-center justify-center overflow-hidden rounded bg-black"
-        style={{ aspectRatio: `${width} / ${height}`, maxHeight: 420, containerType: "size" }}
+        // Size containment ignores the content, so the box needs a definite width
+        // (capped so its height stays within 420px) for the cqh caption sizes.
+        style={{
+          aspectRatio: `${width} / ${height}`,
+          width: "100%",
+          maxWidth: (420 * width) / height,
+          containerType: "size",
+        }}
         data-testid="sequence-player"
       >
         {media?.kind === "video" && <video ref={videoRef} src={media.url} className="h-full w-full object-contain" playsInline />}
         {media?.kind === "image" && <img src={media.url} alt="" className="h-full w-full object-contain" />}
-        {activeCues.map((cue) => (
+        {showing.map((cue) => (
           <div
             key={`${cue.layer}-${cue.start}`}
             data-testid={`sequence-caption-${cue.layer}`}

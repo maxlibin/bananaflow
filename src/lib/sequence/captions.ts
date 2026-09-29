@@ -82,6 +82,13 @@ export function captionCues(
   return cues;
 }
 
+// Cues showing at `time` that belong to the item playing from itemStart to
+// itemEnd: a clip can play briefly past its trim end before the preview
+// advances, and must not show the next item's cues meanwhile.
+export function activeCues(cues: CaptionCue[], time: number, itemStart: number, itemEnd: number): CaptionCue[] {
+  return cues.filter((cue) => cue.start <= time && time < cue.end && cue.start < itemEnd && cue.end > itemStart);
+}
+
 function srtTime(seconds: number): string {
   const total = Math.round(seconds * 1000);
   const pad = (value: number, width: number) => String(value).padStart(width, "0");
