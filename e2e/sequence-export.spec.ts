@@ -99,3 +99,68 @@ test("an edited line blocks export until it is voiced again", async ({ page }) =
   await expect(page.getByTestId("sequence-export-button")).toBeDisabled();
   await expect(page.getByTestId("sequence-export-reason")).toHaveText("Item 2's voiceover needs voicing again");
 });
+
+test("captions are burned into the export and downloadable as SRT", async ({ page }) => {
+  const boardId = execFileSync("npx", ["tsx", "--env-file=.env", "e2e/seed-sequence-board.mts"]).toString().trim();
+  await page.goto(`/board/${boardId}`);
+  await page.getByTestId("sequence-open-panel").click();
+  await expect(page.getByTestId("sequence-captions-spoken")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("sequence-onscreen-text-2")).toHaveValue("50% off today");
+
+  const download = page.waitForEvent("download");
+  await page.getByTestId("sequence-captions-srt").click();
+  const srt = await readFile((await (await download).path())!, "utf8");
+  expect(srt).toBe("1\n00:00:03,000 --> 00:00:04,500\nMeet the stand.\n");
+
+  await page.getByTestId("sequence-export-button").click();
+  await expect(page.getByTestId("sequence-export-done")).toBeVisible({ timeout: 60_000 });
+  const href = await page.getByTestId("sequence-export-done").getAttribute("href");
+
+  // Near-white pixels in each caption band, at a time with the spoken line
+  // (3.4s, over the silent clip), after it (4.8s, same clip) and on the
+  // titled still (5.5s, whose title band is letterbox black).
+  const white = await page.evaluate(async (url) => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.src = url;
+    await new Promise((resolve, reject) => {
+      video.onloadeddata = resolve;
+      video.onerror = () => reject(new Error(`Could not load ${url}`));
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d", { willReadFrequently: true })!;
+    const count = (from: number, to: number) => {
+      const top = Math.round(from * canvas.height);
+      const { data } = context.getImageData(0, top, canvas.width, Math.round(to * canvas.height) - top);
+      let pixels = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        if (data[index] > 235 && data[index + 1] > 235 && data[index + 2] > 235) pixels += 1;
+      }
+      return pixels;
+    };
+    const at = async (time: number) => {
+      video.currentTime = time;
+      await new Promise((resolve) => (video.onseeked = resolve));
+      context.drawImage(video, 0, 0);
+      return { spoken: count(0.69, 0.75), onScreen: count(0.11, 0.17) };
+    };
+    return { line: await at(3.4), after: await at(4.8), title: await at(5.5) };
+  }, href!);
+  console.log("caption band white pixels", JSON.stringify(white));
+  expect(white.line.spoken).toBeGreaterThan(white.after.spoken + 1000);
+  // The silent clip has white of its own in the title band; no title is drawn over it.
+  expect(Math.abs(white.line.onScreen - white.after.onScreen)).toBeLessThan(500);
+  expect(white.title.onScreen).toBeGreaterThan(1000);
+  expect(white.title.spoken).toBeLessThan(50);
+});
+
+test("the preview player keeps its size with the caption overlay", async ({ page }) => {
+  const boardId = execFileSync("npx", ["tsx", "--env-file=.env", "e2e/seed-sequence-board.mts"]).toString().trim();
+  await page.goto(`/board/${boardId}`);
+  await page.getByTestId("sequence-open-panel").click();
+  const box = await page.getByTestId("sequence-player").boundingBox();
+  expect(box!.width).toBeGreaterThan(200);
+  expect(box!.height).toBeGreaterThan(350);
+});

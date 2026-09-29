@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { Button } from "../ui/button";
-import { itemSeconds } from "../../lib/sequence/model";
-import { SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "../../lib/sequence/types";
+import { CAPTION_LAYOUT, CAPTION_MAX_WIDTH, CAPTION_OUTLINE, activeCues, captionCues } from "../../lib/sequence/captions";
+import { itemFrames, itemSeconds } from "../../lib/sequence/model";
+import { SEQUENCE_LIMITS, SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "../../lib/sequence/types";
 import { DUCK_LEVEL, voiceoverStatus } from "../../lib/sequence/voiceover";
 
 export function SequencePlayer({
@@ -20,8 +21,31 @@ export function SequencePlayer({
   const item = data.items[index];
   const media = item ? mediaById[item.sourceNodeId] : null;
   const { width, height } = SEQUENCE_OUTPUT_SIZE[data.aspectRatio];
+  // Seconds into the current item, polled while playing.
+  const [clock, setClock] = useState(0);
+
+  // Cue times need every item's length, so captions wait for all media.
+  const timeline = useMemo(() => {
+    const known: Record<string, SequenceMedia> = {};
+    for (const entry of data.items) {
+      const found = mediaById[entry.sourceNodeId];
+      if (!found || found.kind !== entry.kind || (found.kind === "video" && found.seconds === null)) return null;
+      known[entry.sourceNodeId] = found;
+    }
+    let offset = 0;
+    const starts = data.items.map((entry) => {
+      const start = offset;
+      offset += itemFrames(entry, known[entry.sourceNodeId]) / SEQUENCE_LIMITS.fps;
+      return start;
+    });
+    return { starts: [...starts, offset], cues: captionCues(data.items, known, data.voice ?? null, data.captions ?? null) };
+  }, [data.items, data.voice, data.captions, mediaById]);
+  const showing = timeline
+    ? activeCues(timeline.cues, timeline.starts[index] + clock, timeline.starts[index], timeline.starts[index + 1])
+    : [];
 
   const next = () => {
+    setClock(0);
     if (index + 1 < data.items.length) setIndex(index + 1);
     else {
       setPlaying(false);
@@ -54,6 +78,19 @@ export function SequencePlayer({
     };
   }, [playing, index, item]);
 
+  useEffect(() => {
+    if (!playing || !item) return;
+    const startedAt = performance.now();
+    let frame = 0;
+    const tick = () => {
+      const video = videoRef.current;
+      setClock(item.kind === "video" && video ? video.currentTime - item.trimStart : (performance.now() - startedAt) / 1000);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, index, item]);
+
   // The item's voiceover plays from its start; the clip is ducked under it,
   // as in the export.
   useEffect(() => {
@@ -84,11 +121,35 @@ export function SequencePlayer({
     <div className="flex flex-col items-center gap-2">
       <div
         className="relative flex items-center justify-center overflow-hidden rounded bg-black"
-        style={{ aspectRatio: `${width} / ${height}`, maxHeight: 420 }}
+        // Size containment ignores the content, so the box needs a definite width
+        // (capped so its height stays within 420px) for the cqh caption sizes.
+        style={{
+          aspectRatio: `${width} / ${height}`,
+          width: "100%",
+          maxWidth: (420 * width) / height,
+          containerType: "size",
+        }}
         data-testid="sequence-player"
       >
         {media?.kind === "video" && <video ref={videoRef} src={media.url} className="h-full w-full object-contain" playsInline />}
         {media?.kind === "image" && <img src={media.url} alt="" className="h-full w-full object-contain" />}
+        {showing.map((cue) => (
+          <div
+            key={`${cue.layer}-${cue.start}`}
+            data-testid={`sequence-caption-${cue.layer}`}
+            className="pointer-events-none absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-center font-bold leading-[1.2] text-white"
+            style={{
+              top: `${CAPTION_LAYOUT[cue.layer].y * 100}%`,
+              width: `${CAPTION_MAX_WIDTH * 100}%`,
+              fontSize: `${CAPTION_LAYOUT[cue.layer].size * 100}cqh`,
+              fontFamily: "sans-serif",
+              WebkitTextStroke: `${CAPTION_OUTLINE}em #000`,
+              paintOrder: "stroke fill",
+            }}
+          >
+            {cue.text}
+          </div>
+        ))}
       </div>
       <Button size="sm" variant="secondary" onClick={() => setPlaying(!playing)} data-testid="sequence-play-toggle">
         {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}

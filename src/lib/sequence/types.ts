@@ -14,9 +14,15 @@ export type SequenceVoiceAudio = {
 
 export type SequenceVoiceover = { text: string; audio: SequenceVoiceAudio | null };
 
+type SequenceItemText = { voiceover: SequenceVoiceover | null; onScreenText: string | null };
+
 export type SequenceItem =
-  | { sourceNodeId: string; kind: "video"; trimStart: number; trimEnd: number | null; voiceover: SequenceVoiceover | null }
-  | { sourceNodeId: string; kind: "image"; holdSeconds: number; voiceover: SequenceVoiceover | null };
+  | ({ sourceNodeId: string; kind: "video"; trimStart: number; trimEnd: number | null } & SequenceItemText)
+  | ({ sourceNodeId: string; kind: "image"; holdSeconds: number } & SequenceItemText);
+
+// Which caption layers the export burns in; null (nodes saved before
+// captions existed) means none.
+export type SequenceCaptions = { spoken: boolean; onScreen: boolean };
 
 export type SequenceExport = { mediaId: string; url: string; exportedAt: string };
 
@@ -26,6 +32,7 @@ export type SequenceNodeData = {
   // The narrator for the whole cut; null until the user picks one.
   voice: SequenceVoice | null;
   items: SequenceItem[];
+  captions: SequenceCaptions | null;
   lastExport: SequenceExport | null;
 };
 

@@ -1,7 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 import type { ShotNodeData } from "../script/types";
-import { syncSequenceItems } from "./model";
-import { shotVoiceLines } from "./voiceover";
+import { shotLines, syncSequenceItems } from "./model";
 import type { SequenceAspectRatio, SequenceItem, SequenceNodeData } from "./types";
 
 const SEQUENCE_COLUMN_OFFSET = 1800;
@@ -42,7 +41,7 @@ export function assembleCut(input: {
       id: `sequence-${input.createId()}`,
       type: "sequenceNode",
       position: { x: input.scriptNode.position.x + SEQUENCE_COLUMN_OFFSET, y: input.scriptNode.position.y },
-      data: { label: "Sequence", aspectRatio: input.aspectRatio, voice: null, items: [], lastExport: null, scriptNodeId: scriptId },
+      data: { label: "Sequence", aspectRatio: input.aspectRatio, voice: null, items: [], captions: { spoken: true, onScreen: true }, lastExport: null, scriptNodeId: scriptId },
     } satisfies Node);
 
   const wiredSources = new Set(input.edges.filter((edge) => edge.target === sequence.id).map((edge) => edge.source));
@@ -56,7 +55,7 @@ export function assembleCut(input: {
   }));
   const connected = [...input.nodes.filter((node) => wiredSources.has(node.id)), ...missing];
   const data = sequence.data as ScriptSequenceData;
-  let items = syncSequenceItems(data.items, connected, shotVoiceLines(input.nodes, input.edges));
+  let items = syncSequenceItems(data.items, connected, shotLines(input.nodes, input.edges));
   // syncSequenceItems appends; move each new shot next to its story neighbours.
   for (const video of missing) {
     const storyIndex = chosen.indexOf(video);

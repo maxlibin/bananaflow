@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Loader2 } from "lucide-react";
+import { Captions, Download, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useCanvasHost } from "../canvas-host/context";
 import { useBoardStore } from "../../stores/board-store";
 import { limitNotice } from "../../lib/host/limit-notice";
+import { captionCues, toSrt } from "../../lib/sequence/captions";
 import { downloadHref, type SequenceCheck } from "../../lib/sequence/model";
 import { browserCanExport, renderSequence } from "../../lib/sequence/render";
 import type { SequenceMedia, SequenceNodeData } from "../../lib/sequence/types";
@@ -51,6 +52,19 @@ export function SequenceExport({
           : !boardId
             ? "Save the board before exporting"
             : null;
+  // Cue times need every item's length, which a passing check guarantees.
+  const srt = check.ok
+    ? toSrt(captionCues(data.items, mediaById as Record<string, SequenceMedia>, data.voice ?? null, data.captions ?? null))
+    : "";
+  const downloadSrt = () => {
+    const url = URL.createObjectURL(new Blob([srt], { type: "application/x-subrip" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "captions.srt";
+    link.click();
+    // Revoked after the click has handed the file to the browser.
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
   const busy = phase.name === "rendering" || phase.name === "uploading";
 
   const uploadAndSave = async (rendered: Rendered, signal: AbortSignal) => {
@@ -118,6 +132,11 @@ export function SequenceExport({
         {busy && (
           <Button size="sm" variant="ghost" onClick={() => abortRef.current?.abort()} data-testid="sequence-export-cancel">
             Cancel
+          </Button>
+        )}
+        {srt && (
+          <Button size="sm" variant="ghost" onClick={downloadSrt} data-testid="sequence-captions-srt">
+            <Captions className="h-3.5 w-3.5" /> Download captions (.srt)
           </Button>
         )}
       </div>
