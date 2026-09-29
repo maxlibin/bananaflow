@@ -6,6 +6,7 @@ import * as bulkRuns from "../lib/actions/bulk-runs";
 import * as media from "../lib/actions/media";
 import * as runHistory from "../lib/actions/run-history";
 import * as script from "../lib/actions/script";
+import * as sequence from "../lib/actions/sequence";
 import * as userPreferences from "../lib/actions/user-preferences";
 import type { MediaListOptions } from "../lib/actions/media";
 import type { CreateBoardData, UpdateBoardData } from "../types/board";
@@ -102,4 +103,20 @@ export async function extractScriptEntities(input: ScriptInput<"extractScriptEnt
 
 export async function breakScriptIntoShots(input: ScriptInput<"breakScriptIntoShots">) {
   return script.breakScriptIntoShots(host, input);
+}
+
+export async function createExportUpload(input: { boardId: string; nodeId: string; size: number }) {
+  return sequence.createExportUpload(host, input);
+}
+
+export async function saveSequenceExport(input: {
+  boardId: string;
+  nodeId: string;
+  key: string;
+  size: number;
+  durationSeconds: number;
+  width: number;
+  height: number;
+}) {
+  return sequence.saveSequenceExport(host, input);
 }

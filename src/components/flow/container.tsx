@@ -26,8 +26,10 @@ import {
   ScriptNode,
   ShotNode,
   EntityNode,
+  SequenceNode,
 } from "./nodes";
 import { FlowControls } from "./controls";
+import { sourceKind } from "../../lib/sequence/model";
 import { ReadOnlyProvider } from "./readonly-context";
 import { useTheme } from "../app-theme-provider";
 import { MediaPanel } from "./media-panel";
@@ -46,6 +48,7 @@ const nodeTypes = {
   scriptNode: ScriptNode,
   shotNode: ShotNode,
   entityNode: EntityNode,
+  sequenceNode: SequenceNode,
 };
 
 interface FlowContainerProps {
@@ -73,6 +76,11 @@ export function FlowCanvas({ isReadOnly = false }: { isReadOnly?: boolean }) {
         const sourceNode = nodes.find((n) => n.id === connection.source);
         const targetNode = nodes.find((n) => n.id === connection.target);
 
+        if (targetNode?.type === "sequenceNode") {
+          if (!sourceNode || sourceKind(sourceNode) === null) return false;
+          connection.targetHandle = "items";
+          return true;
+        }
         if (
           targetNode?.type === "outputNode" ||
           targetNode?.type === "videoNode" ||

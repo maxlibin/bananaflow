@@ -16,6 +16,7 @@ import {
   Maximize2,
   Eraser,
   User,
+  ListVideo,
 } from "lucide-react";
 import { useBoardStore } from "../../../stores/board-store";
 
@@ -23,6 +24,7 @@ export default function FlowControls() {
   const viewport = useViewport();
   const addInputNode = useBoardStore((state) => state.addInputNode);
   const addScriptNode = useBoardStore((state) => state.addScriptNode);
+  const addSequenceNode = useBoardStore((state) => state.addSequenceNode);
   const addOutputNode = useBoardStore((state) => state.addOutputNode);
   const addVideoNode = useBoardStore((state) => state.addVideoNode);
   const addSeedNode = useBoardStore((state) => state.addSeedNode);
@@ -49,6 +51,17 @@ export default function FlowControls() {
           </TooltipTrigger>
           <TooltipContent side="right">
             <p>Add Script Node (write the story, then break it into shots)</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <ControlButton onClick={() => addSequenceNode(viewport)} data-testid="add-sequence-node">
+              <ListVideo className="h-4 w-4" />
+            </ControlButton>
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            <p>Add Sequence Node (put clips in order and export an MP4)</p>
           </TooltipContent>
         </Tooltip>
 

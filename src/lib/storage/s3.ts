@@ -1,4 +1,5 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { HeadObjectCommand, NotFound, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { ObjectStorage } from "./types";
 
 export type S3StorageConfig = {
@@ -44,6 +45,31 @@ export function createS3Storage(config: S3StorageConfig): ObjectStorage {
     },
     isAllowedAssetUrl(url) {
       return url.hostname === publicHost;
+    },
+    assetUrl(key) {
+      return `${publicBaseUrl}/${key}`;
+    },
+    async createUpload(input) {
+      const command = new PutObjectCommand({
+        Bucket: config.bucket,
+        Key: input.key,
+        ContentType: input.contentType,
+        ContentLength: input.size,
+      });
+      const uploadUrl = await getSignedUrl(client, command, {
+        expiresIn: 600,
+        signableHeaders: new Set(["content-type", "content-length"]),
+      });
+      return { uploadUrl, method: "PUT", headers: { "Content-Type": input.contentType } };
+    },
+    async getAssetSize(key) {
+      try {
+        const head = await client.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }));
+        return head.ContentLength ?? null;
+      } catch (error) {
+        if (error instanceof NotFound) return null;
+        throw error;
+      }
     },
     resolveAssetUrl(url) {
       return url;

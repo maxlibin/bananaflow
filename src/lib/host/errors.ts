@@ -14,3 +14,12 @@ export class ProviderKeyMissingError extends Error {
     this.hint = hint;
   }
 }
+
+// A storage backend that cannot perform the operation in this deployment
+// (e.g. direct uploads without an object store). Actions return its message.
+export class StorageUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StorageUnavailableError";
+  }
+}

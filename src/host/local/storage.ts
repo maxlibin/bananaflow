@@ -16,7 +16,7 @@ class StorageConfigError extends Error {
 }
 
 // Local disk by default; S3-compatible storage when every S3_* variable is set.
-export function createLocalStorage(appOrigin: string): HostAdapter["storage"] {
+export function createLocalStorage(appOrigin: string, appSecret: string): HostAdapter["storage"] {
   const s3 = {
     S3_ENDPOINT: process.env.S3_ENDPOINT,
     S3_REGION: process.env.S3_REGION,
@@ -31,6 +31,7 @@ export function createLocalStorage(appOrigin: string): HostAdapter["storage"] {
       rootDir: UPLOADS_DIR,
       appOrigin,
       publicPath: UPLOADS_PUBLIC_PATH,
+      uploadSecret: appSecret,
     });
   }
   const missing = Object.entries(s3)

@@ -18,8 +18,11 @@ import { createId } from "@paralleldrive/cuid2";
 import type { VideoModelSettings, VideoShot } from "../lib/video-models";
 import type { EntityDraft, ShotPlan } from "../lib/script/assistant";
 import { applyShotPlans } from "../lib/script/shot-graph";
+import { assembleCut as assembleCutGraph } from "../lib/sequence/assemble-cut";
 import { buildStructureSkeleton } from "../lib/script/structures";
 import type { EntityKind, EntityNodeData, ScriptNodeData } from "../lib/script/types";
+import type { SequenceNodeData } from "../lib/sequence/types";
+import { retargetSequenceSource, toSequenceAspect } from "../lib/sequence/model";
 import { useCanvasHost, type CanvasHost } from "../components/canvas-host/context";
 import type { GenerationFeature } from "../lib/host/features";
 import { notifyDialog } from "../components/ui/dialog-host";
@@ -42,6 +45,7 @@ const EDGE_COLORS: Record<BoardNodeType, string> = {
   scriptNode: "#6366f1",
   shotNode: "#14b8a6",
   entityNode: "#d946ef",
+  sequenceNode: "#0ea5e9",
 };
 
 const ENTITY_COLUMN_OFFSET = -420;
@@ -104,7 +108,8 @@ export type BoardNodeType =
   | "faceConsistencyNode"
   | "scriptNode"
   | "shotNode"
-  | "entityNode";
+  | "entityNode"
+  | "sequenceNode";
 
 interface BoardStoreConfig {
   boardId?: string;
@@ -182,6 +187,7 @@ interface BoardState {
   addFaceConsistencyNode: (viewport?: Viewport) => void;
   addScriptNode: (viewport?: Viewport) => void;
   addEntityNode: (viewport?: Viewport) => void;
+  addSequenceNode: (viewport?: Viewport) => void;
   // Adds Entity nodes for a script's cast and props (skipping names already
   // on the board for that script), stacked to the left of the Script node.
   addEntitiesFromScript: (scriptNodeId: string, drafts: EntityDraft[]) => void;
@@ -196,6 +202,8 @@ interface BoardState {
     videoModelId: string;
     aspectRatio: string;
   }) => void;
+  // Wires a script's shot videos, in story order, into its Sequence node.
+  assembleCut: (scriptNodeId: string) => void;
   updateNodeData: (
     nodeId: string,
     data: Record<string, unknown>
@@ -624,6 +632,10 @@ function createBoardStore({
             position,
             data: { label: "Face Consistency" },
           };
+        case "sequenceNode": {
+          const data: SequenceNodeData = { label: "Sequence", aspectRatio: "9:16", items: [], lastExport: null };
+          return { id: `sequence-${timestamp}`, type: "sequenceNode", position, data };
+        }
         case "entityNode":
           return {
             id: `entity-${timestamp}`,
@@ -1279,6 +1291,9 @@ function createBoardStore({
       addScriptNode: (viewport) => {
         get().createNodeWithType("scriptNode", viewport);
       },
+      addSequenceNode: (viewport) => {
+        get().createNodeWithType("sequenceNode", viewport);
+      },
       addEntityNode: (viewport) => {
         get().createNodeWithType("entityNode", viewport);
       },
@@ -1326,6 +1341,23 @@ function createBoardStore({
             aspectRatio,
             nodes: state.nodes,
             edges: state.edges,
+            createId,
+          });
+          const nextNodes = attachCallbacksToNodes(graph.nodes);
+          const nextEdges = graph.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+          scheduleSaveDebounced(nextNodes, nextEdges);
+          return { ...state, nodes: nextNodes, edges: nextEdges };
+        });
+      },
+      assembleCut: (scriptNodeId) => {
+        set((state) => {
+          const scriptNode = state.nodes.find((node) => node.id === scriptNodeId);
+          if (!scriptNode) throw new Error(`Script node ${scriptNodeId} not found on this board`);
+          const graph = assembleCutGraph({
+            scriptNode,
+            nodes: state.nodes,
+            edges: state.edges,
+            aspectRatio: toSequenceAspect((scriptNode.data as ScriptNodeData).aspectRatio),
             createId,
           });
           const nextNodes = attachCallbacksToNodes(graph.nodes);
@@ -1451,9 +1483,17 @@ function createBoardStore({
               id: `${edge.source}-${newNodeId}-${edge.targetHandle ?? "default"}-${createId()}`,
               target: newNodeId,
             }));
-            const nextEdges = [...current.edges, ...cloneEdges];
-            scheduleSaveDebounced(current.nodes, nextEdges);
-            return { ...current, edges: nextEdges };
+            // The regenerated take replaces the old one in any Sequence.
+            const retargeted = retargetSequenceSource(
+              current.nodes,
+              [...current.edges, ...cloneEdges],
+              sourceNodeId,
+              newNodeId,
+            );
+            const nextNodes = attachCallbacksToNodes(retargeted.nodes);
+            const nextEdges = retargeted.edges.map((edge) => applyEdgeStyle(edge, nextNodes));
+            scheduleSaveDebounced(nextNodes, nextEdges);
+            return { ...current, nodes: nextNodes, edges: nextEdges };
           });
         }
 

@@ -1,5 +1,5 @@
 import type { CanvasActions, LimitNotice } from "../../components/canvas-host/context";
-import type { Denial } from "../host/types";
+import { limitNotice } from "../host/limit-notice";
 import type { TextModelOption } from "../model-options";
 import type { ScriptActionResult } from "./ai/generate";
 import type { ScriptAssistant } from "./assistant";
@@ -14,17 +14,6 @@ type ScriptActions = Pick<
   | "extractScriptEntities"
   | "breakScriptIntoShots"
 >;
-
-function limitNotice(denial: Denial): LimitNotice {
-  return {
-    feature: denial.feature,
-    kind:
-      denial.status === 402 ? "out_of_credits" : denial.status === 429 ? "rate_limit" : "plan",
-    severity: "warning",
-    message: denial.message,
-    plan: denial.plan,
-  };
-}
 
 // Builds the Script node's AI help from the host's script server actions.
 // Denials reach the host's limit UI, then every failure rejects with the

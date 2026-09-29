@@ -9,6 +9,8 @@ import { createScriptAssistant } from "../lib/script/create-script-assistant";
 import {
   alternativeScriptHooks,
   breakScriptIntoShots,
+  createExportUpload,
+  saveSequenceExport,
   createBoard,
   critiqueScript,
   editScriptSelection,
@@ -46,6 +48,8 @@ const actions: CanvasHost["actions"] = {
   critiqueScript,
   extractScriptEntities,
   breakScriptIntoShots,
+  createExportUpload,
+  saveSequenceExport,
 };
 
 const onLimit: CanvasHost["onLimit"] = (notice) => {
