@@ -159,6 +159,8 @@ export type GenerationOutcome =
       userId: string;
       requestId: string;
       model: string;
+      // What beforeGenerate reserved, so the host can return it.
+      reservedMicro: bigint;
       reason: string;
     };
 

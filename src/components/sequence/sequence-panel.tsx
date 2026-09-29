@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { SequencePlayer } from "./sequence-player";
 import { SequenceExport } from "./sequence-export";
@@ -30,15 +31,16 @@ export function SequencePanel({
 
 function SequencePanelBody({ nodeId }: { nodeId: string }) {
   const { data, mediaById, check, loadError } = useSequenceMedia(nodeId);
+  const [batchRunning, setBatchRunning] = useState(false);
   return (
     <div className="flex flex-col gap-3 p-4">
-      <SequenceVoicePicker nodeId={nodeId} data={data} mediaById={mediaById} />
+      <SequenceVoicePicker nodeId={nodeId} data={data} mediaById={mediaById} onBatchChange={setBatchRunning} />
       <SequencePlayer data={data} mediaById={mediaById} />
       <div className="text-xs" data-testid="sequence-check">
         {check.ok ? `${check.totalSeconds.toFixed(1)}s` : check.reason}
       </div>
       {loadError && <div className="text-xs text-red-600">{loadError}</div>}
-      <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} voice={data.voice ?? null} />
+      <SequenceTimeline nodeId={nodeId} items={data.items} mediaById={mediaById} voice={data.voice ?? null} batchRunning={batchRunning} />
       <SequenceExport nodeId={nodeId} data={data} mediaById={mediaById} check={check} />
     </div>
   );

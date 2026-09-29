@@ -123,3 +123,34 @@ test("mixVoice ducks the clip under the voice and clamps the sum", () => {
   const loud = mixVoice([new Float32Array(10).fill(1)], [new Float32Array(10).fill(1)], 10, 1);
   assert.ok(loud[0].every((sample) => sample <= 1));
 });
+
+// Final-review fixes.
+import { attachVoiceAudio, maxSpeechSeconds } from "../src/lib/sequence/voiceover.ts";
+
+test("a voice that fits the raw clip but not its rendered frames is too long", () => {
+  // 5.042s renders as 151 frames = 5.033s; a 5.04s line would be cut off.
+  const items: SequenceItem[] = [
+    { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: { text: "Hi", audio: audio("Hi", 5.04) } },
+  ];
+  const check = validateSequence(items, { v1: { kind: "video", url: "u", seconds: 5.042 } }, voice);
+  assert.equal(check.ok, false);
+});
+
+test("voice audio attaches to the item by source, only while its text is unchanged", () => {
+  const items: SequenceItem[] = [
+    { sourceNodeId: "a", kind: "image", holdSeconds: 3, voiceover: { text: "One", audio: null } },
+    { sourceNodeId: "b", kind: "image", holdSeconds: 3, voiceover: { text: "Two edited", audio: null } },
+  ];
+  const attached = attachVoiceAudio(items, "a", audio("One", 1));
+  assert.deepEqual(attached[0].voiceover, { text: "One", audio: audio("One", 1) });
+  // The user edited line b while it was being voiced: keep the edit, drop the audio.
+  assert.equal(attachVoiceAudio(items, "b", audio("Two", 1)), items);
+  // The item was removed meanwhile.
+  assert.equal(attachVoiceAudio(items, "gone", audio("One", 1)), items);
+});
+
+test("speech far longer than its text is out of bounds", () => {
+  assert.ok(maxSpeechSeconds(15) >= 3);
+  assert.ok(maxSpeechSeconds(600) < 180);
+  assert.ok(maxSpeechSeconds(600) > 600 * 0.075, "normal narration must fit");
+});

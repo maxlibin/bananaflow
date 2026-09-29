@@ -93,3 +93,14 @@ export function mixVoice(
     return mixed;
   });
 }
+
+// Stores freshly voiced audio on the item it was made for (found by source,
+// since items may have moved), unless its line changed while voicing; then
+// the line stays "needs voicing" and the user's edit is kept.
+export function attachVoiceAudio(items: SequenceItem[], sourceNodeId: string, audio: SequenceVoiceAudio): SequenceItem[] {
+  const index = items.findIndex((item) => item.sourceNodeId === sourceNodeId);
+  if (index < 0 || items[index].voiceover?.text !== audio.text) return items;
+  return setVoiceAudio(items, index, audio);
+}
+
+export { maxSpeechSeconds } from "../speech-limits";

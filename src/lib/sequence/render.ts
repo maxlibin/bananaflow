@@ -177,7 +177,12 @@ export async function renderSequence(input: {
   // Mixes the item's ready voiceover line over its audio (ducked under it).
   const withVoice = async (itemAudio: AudioBuffer, item: SequenceItem, seconds: number, label: string) => {
     const voiceover = item.voiceover ?? null;
-    if (voiceoverStatus(voiceover, input.data.voice ?? null, seconds) !== "ready" || !voiceover?.audio) return itemAudio;
+    const status = voiceoverStatus(voiceover, input.data.voice ?? null, seconds);
+    if (status === "none") return itemAudio;
+    // Validation allows only none/ready; anything else must not export silently.
+    if (status !== "ready" || !voiceover?.audio) {
+      throw new SequenceRenderError(`${label}: the voiceover is ${status}; voice it again before exporting`);
+    }
     const encoded = await (await fetchSource(voiceover.audio.url, `${label} voiceover`, input.signal)).arrayBuffer();
     const decoded = await new OfflineAudioContext(CHANNELS, 1, SAMPLE_RATE).decodeAudioData(encoded).catch((error: Error) => {
       throw new SequenceRenderError(`${label}: could not decode the voiceover (${error.message})`);

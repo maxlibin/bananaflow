@@ -155,14 +155,16 @@ export function validateSequence(
       }
     }
     const seconds = itemSeconds(item, media);
-    const status = voiceoverStatus(item.voiceover ?? null, voice, seconds);
+    // The export renders whole frames, so a line must fit the rendered length.
+    const renderedSeconds = itemFrames(item, media) / SEQUENCE_LIMITS.fps;
+    const status = voiceoverStatus(item.voiceover ?? null, voice, renderedSeconds);
     if (status === "unvoiced") return { ok: false, reason: `${label}'s voiceover is not voiced yet` };
     if (status === "stale") {
       return { ok: false, reason: voice ? `${label}'s voiceover needs voicing again` : "Pick a voice for the voiceover" };
     }
     if (status === "too-long") {
       const spoken = (item.voiceover?.audio?.seconds ?? 0).toFixed(1);
-      return { ok: false, reason: `${label}'s voiceover is ${spoken}s but the clip is ${seconds.toFixed(1)}s` };
+      return { ok: false, reason: `${label}'s voiceover is ${spoken}s but the clip is ${renderedSeconds.toFixed(1)}s` };
     }
     totalSeconds += seconds;
   }

@@ -5,25 +5,28 @@ import { Loader2, Mic, Play } from "lucide-react";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { useCanvasHost } from "../canvas-host/context";
-import { useBoardStore } from "../../stores/board-store";
+import { useBoardStore, useBoardStoreApi } from "../../stores/board-store";
 import { limitNotice } from "../../lib/host/limit-notice";
 import { itemSeconds } from "../../lib/sequence/model";
 import { SpeakError, speakLine } from "../../lib/sequence/speak";
 import type { SequenceMedia, SequenceNodeData } from "../../lib/sequence/types";
-import { setVoiceAudio, voiceoverStatus } from "../../lib/sequence/voiceover";
+import { attachVoiceAudio, voiceoverStatus } from "../../lib/sequence/voiceover";
 
 export function SequenceVoicePicker({
   nodeId,
   data,
   mediaById,
+  onBatchChange,
 }: {
   nodeId: string;
   data: SequenceNodeData;
   mediaById: Record<string, SequenceMedia | null>;
+  onBatchChange: (running: boolean) => void;
 }) {
   const canvasHost = useCanvasHost();
   const boardId = useBoardStore((state) => state.boardId);
   const updateNodeData = useBoardStore((state) => state.updateNodeData);
+  const store = useBoardStoreApi();
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const models = canvasHost.models.speech;
@@ -45,21 +48,26 @@ export function SequenceVoicePicker({
   const voiceAll = async () => {
     if (!voice || !boardId) return;
     setError(null);
-    let items = data.items;
-    for (const [position, { item, index }] of pending.entries()) {
-      setProgress(`Voicing ${position + 1} of ${pending.length}`);
-      try {
-        const audio = await speakLine({ boardId, nodeId, voice, text: item.voiceover!.text });
-        items = setVoiceAudio(items, index, audio);
-        updateNodeData(nodeId, { items });
-      } catch (caught) {
-        if (!(caught instanceof SpeakError)) throw caught;
-        if (caught.denial) canvasHost.onLimit(limitNotice(caught.denial));
-        setError(`Item ${index + 1}: ${caught.message}`);
-        break;
+    onBatchChange(true);
+    try {
+      for (const [position, { item, index }] of pending.entries()) {
+        setProgress(`Voicing ${position + 1} of ${pending.length}`);
+        try {
+          const audio = await speakLine({ boardId, nodeId, voice, text: item.voiceover!.text });
+          // Write onto the latest items: the user may have edited meanwhile.
+          const latest = (store.getState().nodes.find((node) => node.id === nodeId)?.data as SequenceNodeData).items;
+          updateNodeData(nodeId, { items: attachVoiceAudio(latest, item.sourceNodeId, audio) });
+        } catch (caught) {
+          if (!(caught instanceof SpeakError)) throw caught;
+          if (caught.denial) canvasHost.onLimit(limitNotice(caught.denial));
+          setError(`Item ${index + 1}: ${caught.message}`);
+          break;
+        }
       }
+    } finally {
+      setProgress(null);
+      onBatchChange(false);
     }
-    setProgress(null);
   };
 
   return (

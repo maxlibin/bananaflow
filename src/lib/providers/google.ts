@@ -14,6 +14,7 @@ import {
   type VideoTaskSpec,
 } from "./types";
 import type { VideoModelSettings } from "../video-models";
+import { maxSpeechSeconds } from "../speech-limits";
 import { settingSeconds } from "../video-settings";
 
 export const GOOGLE_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
@@ -232,6 +233,9 @@ async function createSpeech(input: { providerModel: string; text: string; voiceI
       contents: [{ parts: [{ text: input.text }] }],
       generationConfig: {
         responseModalities: ["AUDIO"],
+        // Gemini TTS follows instructions in the text; cap the audio (25
+        // tokens per second) so a line cannot run far past its length.
+        maxOutputTokens: Math.ceil(maxSpeechSeconds(input.text.length) * 25),
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: input.voiceId } } },
       },
     }),

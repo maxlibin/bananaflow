@@ -7,8 +7,25 @@ import { adjustBoardStorage } from "../board-storage";
 import { ProviderKeyMissingError } from "../host/errors";
 import type { Denial, HostAdapter } from "../host/types";
 import { getProvider } from "../providers";
-import { SpeechProviderError } from "../providers/types";
+import { SpeechProviderError, type SpeechResult } from "../providers/types";
 import { MAX_LINE_CHARACTERS } from "../sequence/voiceover";
+import { maxSpeechSeconds } from "../speech-limits";
+
+class SpeechStageError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SpeechStageError";
+  }
+}
+
+// Runs one step after voicing and names it in the error, keeping the cause.
+async function stage<T>(label: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (error) {
+    throw new SpeechStageError(`${label} failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 
 type SpeechBody = { boardId: string; nodeId: string; model: string; voiceId: string; text: string };
 
@@ -60,40 +77,76 @@ export function createGenerateSpeechRoute(host: HostAdapter) {
     });
     if (!decision.ok) return fail(decision.status, decision.message, decision);
 
+    const settleFailed = async (status: number, message: string) => {
+      await host.policy.afterGenerate({
+        kind: "speech",
+        status: "failed",
+        userId,
+        requestId,
+        model: body.model,
+        reservedMicro: decision.reservedMicro,
+        reason: message,
+      });
+      return fail(status, message, null);
+    };
+
+    let speech: SpeechResult;
     try {
-      const speech = await getProvider(host, info.provider).createSpeech({
+      speech = await getProvider(host, info.provider).createSpeech({
         model: body.model,
         providerModel: info.providerModel,
         text,
         voiceId: body.voiceId,
         secret,
       });
-      const seconds = await new Input({ source: new BufferSource(speech.bytes), formats: ALL_FORMATS }).computeDuration();
+    } catch (error) {
+      if (!(error instanceof SpeechProviderError)) throw error;
+      return settleFailed(502, error.message);
+    }
+
+    // Every later failure is reported with its cause and settles the request
+    // as failed (server errors would otherwise reach the client redacted).
+    try {
+      const seconds = await stage("Measuring the voiceover", () =>
+        new Input({ source: new BufferSource(speech.bytes), formats: ALL_FORMATS }).computeDuration(),
+      );
+      const limit = maxSpeechSeconds(text.length);
+      if (seconds > limit) {
+        return settleFailed(
+          502,
+          `The voice ran ${seconds.toFixed(1)}s for ${text.length} characters (limit ${limit.toFixed(0)}s); rewrite the line as plain narration`,
+        );
+      }
       const key = `${userId}/voice/${body.boardId}/${createId()}.${speech.ext}`;
-      const stored = await host.storage.uploadAsset({ key, body: speech.bytes, contentType: speech.contentType });
-      const [row] = await host.db
-        .insert(mediaTable)
-        .values({
+      const stored = await stage("Storing the voiceover", () =>
+        host.storage.uploadAsset({ key, body: speech.bytes, contentType: speech.contentType }),
+      );
+      const mediaId = await stage("Saving the voiceover", async () => {
+        const [row] = await host.db
+          .insert(mediaTable)
+          .values({
+            userId,
+            type: "AUDIO",
+            url: stored.url,
+            blobPath: stored.pathname,
+            fileName: key.split("/").pop() ?? `voice.${speech.ext}`,
+            fileSize: speech.bytes.byteLength,
+            prompt: text,
+            boardId: body.boardId,
+            nodeId: body.nodeId,
+          })
+          .returning({ id: mediaTable.id });
+        await adjustBoardStorage(host.db, userId, body.boardId, speech.bytes.byteLength);
+        await host.limits.onStorageChanged({
           userId,
-          type: "AUDIO",
-          url: stored.url,
-          blobPath: stored.pathname,
-          fileName: key.split("/").pop() ?? `voice.${speech.ext}`,
-          fileSize: speech.bytes.byteLength,
-          prompt: text,
           boardId: body.boardId,
-          nodeId: body.nodeId,
-        })
-        .returning({ id: mediaTable.id });
-      await adjustBoardStorage(host.db, userId, body.boardId, speech.bytes.byteLength);
-      await host.limits.onStorageChanged({
-        userId,
-        boardId: body.boardId,
-        deltaBytes: speech.bytes.byteLength,
-        source: "speech",
-        blobPath: stored.pathname,
-        previousBlobPath: null,
-        contentType: speech.contentType,
+          deltaBytes: speech.bytes.byteLength,
+          source: "speech",
+          blobPath: stored.pathname,
+          previousBlobPath: null,
+          contentType: speech.contentType,
+        });
+        return row.id;
       });
       await host.policy.afterGenerate({
         kind: "speech",
@@ -103,13 +156,12 @@ export function createGenerateSpeechRoute(host: HostAdapter) {
         model: body.model,
         characters: text.length,
         boardId: body.boardId,
-        mediaId: row.id,
+        mediaId,
       });
-      return NextResponse.json({ ok: true, value: { url: stored.url, mediaId: row.id, seconds } });
+      return NextResponse.json({ ok: true, value: { url: stored.url, mediaId, seconds } });
     } catch (error) {
-      if (!(error instanceof SpeechProviderError)) throw error;
-      await host.policy.afterGenerate({ kind: "speech", status: "failed", userId, requestId, model: body.model, reason: error.message });
-      return fail(502, error.message, null);
+      if (!(error instanceof SpeechStageError)) throw error;
+      return settleFailed(500, error.message);
     }
   }
 

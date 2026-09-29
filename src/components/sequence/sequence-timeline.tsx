@@ -10,14 +10,14 @@ import { limitNotice } from "../../lib/host/limit-notice";
 import { SpeakError, speakLine } from "../../lib/sequence/speak";
 import {
   MAX_LINE_CHARACTERS,
-  setVoiceAudio,
+  attachVoiceAudio,
   setVoiceText,
   voiceoverStatus,
   type VoiceoverStatus,
 } from "../../lib/sequence/voiceover";
-import { useBoardStore } from "../../stores/board-store";
+import { useBoardStore, useBoardStoreApi } from "../../stores/board-store";
 import { InvalidSequenceEditError, itemSeconds, moveItem, setHold, setTrim } from "../../lib/sequence/model";
-import type { SequenceItem, SequenceMedia, SequenceVoice } from "../../lib/sequence/types";
+import type { SequenceItem, SequenceMedia, SequenceNodeData, SequenceVoice } from "../../lib/sequence/types";
 
 // Keeps what the user is typing and applies it on Enter or blur, so
 // intermediate values ("2" on the way to "2.5") are not rejected.
@@ -71,6 +71,7 @@ function VoiceoverRow({
   index,
   voice,
   seconds,
+  batchRunning,
   onChange,
 }: {
   nodeId: string;
@@ -78,10 +79,12 @@ function VoiceoverRow({
   index: number;
   voice: SequenceVoice | null;
   seconds: number;
+  batchRunning: boolean;
   onChange: (items: SequenceItem[]) => void;
 }) {
   const canvasHost = useCanvasHost();
   const boardId = useBoardStore((state) => state.boardId);
+  const store = useBoardStoreApi();
   const voiceover = items[index].voiceover ?? null;
   const [draft, setDraft] = useState(voiceover?.text ?? "");
   const [busy, setBusy] = useState(false);
@@ -105,7 +108,9 @@ function VoiceoverRow({
     setBusy(true);
     try {
       const audio = await speakLine({ boardId, nodeId, voice, text: voiceover.text });
-      onChange(setVoiceAudio(items, index, audio));
+      // Write onto the latest items: the line may have been edited meanwhile.
+      const latest = (store.getState().nodes.find((node) => node.id === nodeId)?.data as SequenceNodeData).items;
+      onChange(attachVoiceAudio(latest, items[index].sourceNodeId, audio));
       setError(null);
     } catch (caught) {
       if (!(caught instanceof SpeakError)) throw caught;
@@ -139,7 +144,7 @@ function VoiceoverRow({
         </Button>
       )}
       {(status === "unvoiced" || status === "stale") && (
-        <Button size="sm" variant="secondary" disabled={!voice || busy} onClick={() => void voiceIt()} data-testid={`sequence-voice-line-${index}`}>
+        <Button size="sm" variant="secondary" disabled={!voice || busy || batchRunning} onClick={() => void voiceIt()} data-testid={`sequence-voice-line-${index}`}>
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
           Voice this line
         </Button>
@@ -154,11 +159,13 @@ export function SequenceTimeline({
   items,
   mediaById,
   voice,
+  batchRunning,
 }: {
   nodeId: string;
   items: SequenceItem[];
   mediaById: Record<string, SequenceMedia | null>;
   voice: SequenceVoice | null;
+  batchRunning: boolean;
 }) {
   const updateNodeData = useBoardStore((state) => state.updateNodeData);
   const removeEdgesByConnection = useBoardStore((state) => state.removeEdgesByConnection);
@@ -241,6 +248,7 @@ export function SequenceTimeline({
               index={index}
               voice={voice}
               seconds={rowSeconds}
+              batchRunning={batchRunning}
               onChange={(next) => updateNodeData(nodeId, { items: next })}
             />
           </div>
