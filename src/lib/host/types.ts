@@ -3,7 +3,7 @@ import type { ExtractTablesWithRelations } from "drizzle-orm";
 import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import type * as engineSchema from "../../db/schema";
 import type { AdvancedOpId } from "../advanced-ops";
-import type { ImageModelInfo, VideoModelInfo } from "../model-registry";
+import type { ImageModelInfo, VideoModelInfo, SpeechModelInfo } from "../model-registry";
 import type { TextModelOption } from "../model-options";
 import type { Provider, ProviderId } from "../providers/types";
 import type { GenerationFeature } from "./features";
@@ -66,6 +66,14 @@ export type GenerationRequest =
       boardId: string;
       model: string;
       count: number;
+    }
+  | {
+      kind: "speech";
+      userId: string;
+      requestId: string;
+      boardId: string;
+      model: string;
+      characters: number;
     };
 
 export type GenerationDecision = { ok: true; reservedMicro: bigint } | Denial;
@@ -134,6 +142,26 @@ export type GenerationOutcome =
       status: "settled";
       userId: string;
       bulkRunId: string;
+    }
+  | {
+      kind: "speech";
+      status: "completed";
+      userId: string;
+      requestId: string;
+      model: string;
+      characters: number;
+      boardId: string;
+      mediaId: string;
+    }
+  | {
+      kind: "speech";
+      status: "failed";
+      userId: string;
+      requestId: string;
+      model: string;
+      // What beforeGenerate reserved, so the host can return it.
+      reservedMicro: bigint;
+      reason: string;
     };
 
 // One LLM call made for a user (script writing). Hosts that bill text usage
@@ -199,6 +227,7 @@ export type HostAdapter = {
     // model-registry.ts or add your own.
     image: Record<string, ImageModelInfo>;
     video: Record<string, VideoModelInfo>;
+    speech: Record<string, SpeechModelInfo>;
   };
   text: {
     // Writing models in picker order; `defaultModelId` for drafting and

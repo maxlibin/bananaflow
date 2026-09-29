@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play } from "lucide-react";
 import { Button } from "../ui/button";
+import { itemSeconds } from "../../lib/sequence/model";
 import { SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "../../lib/sequence/types";
+import { DUCK_LEVEL, voiceoverStatus } from "../../lib/sequence/voiceover";
 
 export function SequencePlayer({
   data,
@@ -51,6 +53,32 @@ export function SequencePlayer({
       video.removeEventListener("ended", next);
     };
   }, [playing, index, item]);
+
+  // The item's voiceover plays from its start; the clip is ducked under it,
+  // as in the export.
+  useEffect(() => {
+    if (!playing || !item) return;
+    const seconds =
+      media && (media.kind === "image" || media.seconds !== null) ? itemSeconds(item, media) : Number.POSITIVE_INFINITY;
+    const voiceover = item.voiceover ?? null;
+    if (voiceoverStatus(voiceover, data.voice ?? null, seconds) !== "ready" || !voiceover?.audio) return;
+    const voice = new Audio(voiceover.audio.url);
+    const video = videoRef.current;
+    const restore = () => {
+      if (video) video.volume = 1;
+    };
+    if (video) video.volume = DUCK_LEVEL;
+    voice.addEventListener("ended", restore);
+    voice.play().catch((error: Error) => {
+      restore();
+      if (error.name !== "AbortError") console.error("Voiceover preview failed", error);
+    });
+    return () => {
+      voice.pause();
+      voice.removeEventListener("ended", restore);
+      restore();
+    };
+  }, [playing, index, item, media, data.voice]);
 
   return (
     <div className="flex flex-col items-center gap-2">

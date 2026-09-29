@@ -5,7 +5,7 @@ import { localCallbacks } from "./local/callbacks";
 import { createLocalKeys } from "./local/keys";
 import { localLimits } from "./local/limits";
 import { localPolicy } from "./local/policy";
-import { LOCAL_IMAGE_MODELS, LOCAL_PROVIDERS, LOCAL_VIDEO_MODELS } from "./local/providers";
+import { LOCAL_IMAGE_MODELS, LOCAL_PROVIDERS, LOCAL_SPEECH_MODELS, LOCAL_VIDEO_MODELS } from "./local/providers";
 import { createLocalStorage } from "./local/storage";
 import { createLocalText } from "./local/text";
 
@@ -25,7 +25,7 @@ export const host: HostAdapter = {
   db,
   auth: localAuth,
   providers: { list: LOCAL_PROVIDERS },
-  models: { image: LOCAL_IMAGE_MODELS, video: LOCAL_VIDEO_MODELS },
+  models: { image: LOCAL_IMAGE_MODELS, video: LOCAL_VIDEO_MODELS, speech: LOCAL_SPEECH_MODELS },
   text: createLocalText(keys),
   keys,
   policy: localPolicy,

@@ -8,4 +8,5 @@ export type GenerationFeature =
   | "BACKGROUND_REMOVAL"
   | "FACE_CONSISTENCY"
   | "TEXT_GENERATION"
-  | "BOARD_CREATED";
+  | "BOARD_CREATED"
+  | "SPEECH_GENERATION";

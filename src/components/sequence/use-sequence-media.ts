@@ -61,5 +61,5 @@ export function useSequenceMedia(nodeId: string): {
     [baseMedia, seconds],
   );
 
-  return { data, mediaById, check: validateSequence(data.items, mediaById), loadError };
+  return { data, mediaById, check: validateSequence(data.items, mediaById, data.voice ?? null), loadError };
 }

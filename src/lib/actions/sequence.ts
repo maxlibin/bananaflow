@@ -2,6 +2,7 @@ import { S3ServiceException } from "@aws-sdk/client-s3";
 import { createId } from "@paralleldrive/cuid2";
 import { and, eq } from "drizzle-orm";
 import { boards, media as mediaTable } from "../../db/schema";
+import { isBoardOwner } from "../board-owner";
 import { adjustBoardStorage } from "../board-storage";
 import { StorageUnavailableError } from "../host/errors";
 import type { Denial, DirectUpload, HostAdapter } from "../host/types";
@@ -11,8 +12,7 @@ export type SequenceActionResult<T> = { ok: true; value: T } | { ok: false; erro
 async function ownedBoard(host: HostAdapter, boardId: string): Promise<{ userId: string } | { error: string }> {
   const userId = await host.auth.getUserId();
   if (!userId) return { error: "Sign in to export a sequence." };
-  const [board] = await host.db.select({ id: boards.id }).from(boards).where(and(eq(boards.id, boardId), eq(boards.userId, userId)));
-  if (!board) return { error: `Board ${boardId} not found` };
+  if (!(await isBoardOwner(host.db, userId, boardId))) return { error: `Board ${boardId} not found` };
   return { userId };
 }
 

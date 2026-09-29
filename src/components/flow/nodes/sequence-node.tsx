@@ -9,6 +9,7 @@ import { NodeBox } from "./node-box";
 import { SequencePanel } from "../../sequence/sequence-panel";
 import { useBoardStore } from "../../../stores/board-store";
 import { downloadHref, sourceMedia, syncSequenceItems } from "../../../lib/sequence/model";
+import { shotVoiceLines } from "../../../lib/sequence/voiceover";
 import type { SequenceAspectRatio, SequenceNodeData } from "../../../lib/sequence/types";
 
 const ASPECTS: SequenceAspectRatio[] = ["9:16", "16:9", "1:1", "4:5"];
@@ -38,7 +39,9 @@ const SequenceNode = memo(({ id, data, isConnectable, selected }: SequenceNodePr
     [nodes, sourceKey],
   );
 
-  const synced = useMemo(() => syncSequenceItems(data.items, sources), [data.items, sources]);
+  const edges = useBoardStore((state) => state.edges);
+  const voiceLines = useMemo(() => shotVoiceLines(nodes, edges), [nodes, edges]);
+  const synced = useMemo(() => syncSequenceItems(data.items, sources, voiceLines), [data.items, sources, voiceLines]);
   useEffect(() => {
     if (JSON.stringify(synced) !== JSON.stringify(data.items)) updateNodeData(id, { items: synced });
   }, [data.items, id, synced, updateNodeData]);

@@ -14,7 +14,14 @@ import {
   canEncodeAudio,
 } from "mediabunny";
 import { itemFrames } from "./model";
-import { SEQUENCE_LIMITS, SEQUENCE_OUTPUT_SIZE, type SequenceMedia, type SequenceNodeData } from "./types";
+import { mixVoice, voiceoverStatus } from "./voiceover";
+import {
+  SEQUENCE_LIMITS,
+  SEQUENCE_OUTPUT_SIZE,
+  type SequenceItem,
+  type SequenceMedia,
+  type SequenceNodeData,
+} from "./types";
 
 const SAMPLE_RATE = 48_000;
 const CHANNELS = 2;
@@ -71,6 +78,17 @@ function sliceAudio(buffer: AudioBuffer, bufferStart: number, from: number, to: 
     sliced.copyToChannel(buffer.getChannelData(channel).subarray(startFrame, endFrame), channel);
   }
   return sliced;
+}
+
+// Exactly `seconds` of output-format audio: `clip` (already converted)
+// truncated or padded with silence; silence when there is no clip audio.
+function fitToLength(clip: AudioBuffer | null, seconds: number): AudioBuffer {
+  const fitted = silence(seconds);
+  if (!clip) return fitted;
+  for (let channel = 0; channel < CHANNELS; channel += 1) {
+    fitted.copyToChannel(clip.getChannelData(channel).subarray(0, fitted.length), channel);
+  }
+  return fitted;
 }
 
 // Silence in the same format as `like`, so it can be joined to its clip.
@@ -156,6 +174,27 @@ export async function renderSequence(input: {
     context.drawImage(source, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
   };
 
+  // Mixes the item's ready voiceover line over its audio (ducked under it).
+  const withVoice = async (itemAudio: AudioBuffer, item: SequenceItem, seconds: number, label: string) => {
+    const voiceover = item.voiceover ?? null;
+    const status = voiceoverStatus(voiceover, input.data.voice ?? null, seconds);
+    if (status === "none") return itemAudio;
+    // Validation allows only none/ready; anything else must not export silently.
+    if (status !== "ready" || !voiceover?.audio) {
+      throw new SequenceRenderError(`${label}: the voiceover is ${status}; voice it again before exporting`);
+    }
+    const encoded = await (await fetchSource(voiceover.audio.url, `${label} voiceover`, input.signal)).arrayBuffer();
+    const decoded = await new OfflineAudioContext(CHANNELS, 1, SAMPLE_RATE).decodeAudioData(encoded).catch((error: Error) => {
+      throw new SequenceRenderError(`${label}: could not decode the voiceover (${error.message})`);
+    });
+    const voice = await toOutputFormat(decoded);
+    const channels = Array.from({ length: CHANNELS }, (_, channel) => itemAudio.getChannelData(channel));
+    const spoken = Array.from({ length: CHANNELS }, (_, channel) => voice.getChannelData(channel));
+    const mixed = mixVoice(channels, spoken, SAMPLE_RATE, seconds);
+    mixed.forEach((channel, index) => itemAudio.copyToChannel(channel, index));
+    return itemAudio;
+  };
+
   try {
     for (const [index, item] of input.data.items.entries()) {
       const label = `Item ${index + 1}`;
@@ -174,7 +213,7 @@ export async function renderSequence(input: {
           await videoSource.add(offset + frame * frameDuration, frameDuration);
           input.onProgress((offset + frame * frameDuration) / totalSeconds);
         }
-        await audioSource.add(silence(seconds));
+        await audioSource.add(await withVoice(silence(seconds), item, seconds, label));
       } else {
         const source = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
         const videoTrack = await source.getPrimaryVideoTrack();
@@ -197,7 +236,7 @@ export async function renderSequence(input: {
         }
 
         const audioTrack = await source.getPrimaryAudioTrack();
-        let audioSeconds = 0;
+        let clipAudio: AudioBuffer | null = null;
         if (audioTrack) {
           const end = item.trimStart + seconds;
           const slices: AudioBuffer[] = [];
@@ -215,14 +254,11 @@ export async function renderSequence(input: {
             slices.push(sliced);
             covered += sliced.duration;
           }
-          if (slices.length > 0) {
-            const converted = await toOutputFormat(concatAudio(slices, label));
-            await audioSource.add(converted);
-            audioSeconds = converted.duration;
-          }
+          if (slices.length > 0) clipAudio = await toOutputFormat(concatAudio(slices, label));
         }
-        // Keep audio exactly as long as the item's video, so later items stay in sync.
-        if (seconds - audioSeconds > 1 / SAMPLE_RATE) await audioSource.add(silence(seconds - audioSeconds));
+        // Exactly as long as the item's video, so later items stay in sync.
+        const itemAudio = fitToLength(clipAudio, seconds);
+        await audioSource.add(await withVoice(itemAudio, item, seconds, label));
         source.dispose();
       }
       offset += frames * frameDuration;

@@ -1,14 +1,30 @@
 export type SequenceAspectRatio = "9:16" | "16:9" | "1:1" | "4:5";
 
+export type SequenceVoice = { model: string; voiceId: string };
+
+export type SequenceVoiceAudio = {
+  url: string;
+  mediaId: string;
+  seconds: number;
+  model: string;
+  voiceId: string;
+  // The exact text the audio was made from.
+  text: string;
+};
+
+export type SequenceVoiceover = { text: string; audio: SequenceVoiceAudio | null };
+
 export type SequenceItem =
-  | { sourceNodeId: string; kind: "video"; trimStart: number; trimEnd: number | null }
-  | { sourceNodeId: string; kind: "image"; holdSeconds: number };
+  | { sourceNodeId: string; kind: "video"; trimStart: number; trimEnd: number | null; voiceover: SequenceVoiceover | null }
+  | { sourceNodeId: string; kind: "image"; holdSeconds: number; voiceover: SequenceVoiceover | null };
 
 export type SequenceExport = { mediaId: string; url: string; exportedAt: string };
 
 export type SequenceNodeData = {
   label: string;
   aspectRatio: SequenceAspectRatio;
+  // The narrator for the whole cut; null until the user picks one.
+  voice: SequenceVoice | null;
   items: SequenceItem[];
   lastExport: SequenceExport | null;
 };

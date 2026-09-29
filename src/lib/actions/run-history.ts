@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { boards, media as mediaTable } from "../../db/schema";
 import { clampVariantCount } from "../run-history-math";
 import type { EngineDatabase, HostAdapter } from "../host/types";
@@ -59,7 +59,8 @@ export async function getBoardHistory(
   const rows = await host.db
     .select()
     .from(mediaTable)
-    .where(and(eq(mediaTable.boardId, boardId), eq(mediaTable.userId, userId)))
+    // Voiceover audio belongs to a Sequence, not to a generation run.
+    .where(and(eq(mediaTable.boardId, boardId), eq(mediaTable.userId, userId), ne(mediaTable.type, "AUDIO")))
     .orderBy(desc(mediaTable.pinned), desc(mediaTable.createdAt))
     .limit(PAGE_SIZE);
 

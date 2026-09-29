@@ -633,7 +633,7 @@ function createBoardStore({
             data: { label: "Face Consistency" },
           };
         case "sequenceNode": {
-          const data: SequenceNodeData = { label: "Sequence", aspectRatio: "9:16", items: [], lastExport: null };
+          const data: SequenceNodeData = { label: "Sequence", aspectRatio: "9:16", voice: null, items: [], lastExport: null };
           return { id: `sequence-${timestamp}`, type: "sequenceNode", position, data };
         }
         case "entityNode":

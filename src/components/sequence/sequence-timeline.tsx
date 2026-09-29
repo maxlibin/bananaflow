@@ -1,12 +1,23 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Loader2, Mic, Play, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import { useBoardStore } from "../../stores/board-store";
-import { InvalidSequenceEditError, moveItem, setHold, setTrim } from "../../lib/sequence/model";
-import type { SequenceItem, SequenceMedia } from "../../lib/sequence/types";
+import { Textarea } from "../ui/textarea";
+import { useCanvasHost } from "../canvas-host/context";
+import { limitNotice } from "../../lib/host/limit-notice";
+import { SpeakError, speakLine } from "../../lib/sequence/speak";
+import {
+  MAX_LINE_CHARACTERS,
+  attachVoiceAudio,
+  setVoiceText,
+  voiceoverStatus,
+  type VoiceoverStatus,
+} from "../../lib/sequence/voiceover";
+import { useBoardStore, useBoardStoreApi } from "../../stores/board-store";
+import { InvalidSequenceEditError, itemSeconds, moveItem, setHold, setTrim } from "../../lib/sequence/model";
+import type { SequenceItem, SequenceMedia, SequenceNodeData, SequenceVoice } from "../../lib/sequence/types";
 
 // Keeps what the user is typing and applies it on Enter or blur, so
 // intermediate values ("2" on the way to "2.5") are not rejected.
@@ -46,14 +57,115 @@ function SecondsField({
   );
 }
 
+const STATUS_LABEL: Record<VoiceoverStatus, (seconds: number, audioSeconds: number) => string> = {
+  none: () => "no line",
+  unvoiced: () => "not voiced",
+  stale: () => "needs voicing",
+  "too-long": (seconds, audioSeconds) => `too long: ${audioSeconds.toFixed(1)}s > ${seconds.toFixed(1)}s`,
+  ready: (_seconds, audioSeconds) => `voiced · ${audioSeconds.toFixed(1)}s`,
+};
+
+function VoiceoverRow({
+  nodeId,
+  items,
+  index,
+  voice,
+  seconds,
+  batchRunning,
+  onChange,
+}: {
+  nodeId: string;
+  items: SequenceItem[];
+  index: number;
+  voice: SequenceVoice | null;
+  seconds: number;
+  batchRunning: boolean;
+  onChange: (items: SequenceItem[]) => void;
+}) {
+  const canvasHost = useCanvasHost();
+  const boardId = useBoardStore((state) => state.boardId);
+  const store = useBoardStoreApi();
+  const voiceover = items[index].voiceover ?? null;
+  const [draft, setDraft] = useState(voiceover?.text ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setDraft(voiceover?.text ?? ""), [voiceover?.text]);
+  const status = voiceoverStatus(voiceover, voice, seconds);
+
+  const commit = () => {
+    if (draft.trim() === (voiceover?.text ?? "")) return;
+    try {
+      onChange(setVoiceText(items, index, draft));
+      setError(null);
+    } catch (caught) {
+      if (!(caught instanceof InvalidSequenceEditError)) throw caught;
+      setError(caught.message);
+    }
+  };
+
+  const voiceIt = async () => {
+    if (!voice || !boardId || !voiceover) return;
+    setBusy(true);
+    try {
+      const audio = await speakLine({ boardId, nodeId, voice, text: voiceover.text });
+      // Write onto the latest items: the line may have been edited meanwhile.
+      const latest = (store.getState().nodes.find((node) => node.id === nodeId)?.data as SequenceNodeData).items;
+      onChange(attachVoiceAudio(latest, items[index].sourceNodeId, audio));
+      setError(null);
+    } catch (caught) {
+      if (!(caught instanceof SpeakError)) throw caught;
+      if (caught.denial) canvasHost.onLimit(limitNotice(caught.denial));
+      setError(caught.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-1 flex w-full flex-wrap items-center gap-2">
+      <Textarea
+        className="min-h-8 flex-1 text-xs"
+        placeholder="Voiceover line (optional)"
+        value={draft}
+        maxLength={MAX_LINE_CHARACTERS}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        data-testid={`sequence-voice-text-${index}`}
+      />
+      <span
+        className={`rounded-full border px-2 py-0.5 text-[11px] ${status === "too-long" ? "border-red-400 text-red-600" : "text-muted-foreground"}`}
+        data-testid={`sequence-voice-status-${index}`}
+      >
+        {STATUS_LABEL[status](seconds, voiceover?.audio?.seconds ?? 0)}
+      </span>
+      {status === "ready" && voiceover?.audio && (
+        <Button size="icon" variant="ghost" aria-label="Play line" onClick={() => void new Audio(voiceover.audio!.url).play()}>
+          <Play className="h-3.5 w-3.5" />
+        </Button>
+      )}
+      {(status === "unvoiced" || status === "stale") && (
+        <Button size="sm" variant="secondary" disabled={!voice || busy || batchRunning} onClick={() => void voiceIt()} data-testid={`sequence-voice-line-${index}`}>
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mic className="h-3.5 w-3.5" />}
+          Voice this line
+        </Button>
+      )}
+      {error && <div className="w-full text-xs text-red-600">{error}</div>}
+    </div>
+  );
+}
+
 export function SequenceTimeline({
   nodeId,
   items,
   mediaById,
+  voice,
+  batchRunning,
 }: {
   nodeId: string;
   items: SequenceItem[];
   mediaById: Record<string, SequenceMedia | null>;
+  voice: SequenceVoice | null;
+  batchRunning: boolean;
 }) {
   const updateNodeData = useBoardStore((state) => state.updateNodeData);
   const removeEdgesByConnection = useBoardStore((state) => state.removeEdgesByConnection);
@@ -76,8 +188,10 @@ export function SequenceTimeline({
       {items.map((item, index) => {
         const media = mediaById[item.sourceNodeId];
         const clipSeconds = media?.kind === "video" ? media.seconds : null;
+        const rowSeconds =
+          media && (media.kind === "image" || media.seconds !== null) ? itemSeconds(item, media) : Number.POSITIVE_INFINITY;
         return (
-          <div key={item.sourceNodeId} className="flex items-center gap-2 rounded border p-1.5 text-xs" data-testid={`sequence-item-${index}`}>
+          <div key={item.sourceNodeId} className="flex flex-wrap items-center gap-2 rounded border p-1.5 text-xs" data-testid={`sequence-item-${index}`}>
             <span className="w-5 text-muted-foreground">{index + 1}</span>
             <Button size="icon" variant="ghost" disabled={index === 0} onClick={() => apply(() => moveItem(items, index, index - 1))} aria-label="Move up">
               <ArrowUp className="h-3.5 w-3.5" />
@@ -128,6 +242,15 @@ export function SequenceTimeline({
             >
               <X className="h-3.5 w-3.5" />
             </Button>
+            <VoiceoverRow
+              nodeId={nodeId}
+              items={items}
+              index={index}
+              voice={voice}
+              seconds={rowSeconds}
+              batchRunning={batchRunning}
+              onChange={(next) => updateNodeData(nodeId, { items: next })}
+            />
           </div>
         );
       })}

@@ -1,3 +1,4 @@
+import type { SpeechModelInfo, SpeechVoice } from "./model-registry";
 // Client-side model pickers and their per-model setting options. A
 // deployment composes `CanvasHost.models` from these and any of its own.
 
@@ -67,6 +68,7 @@ export type CanvasModels = {
   imageSettings: Record<string, ImageSettingOptions>;
   video: VideoModelOption[];
   videoSettings: Record<string, VideoSettingOptions>;
+  speech: SpeechModelOption[];
 };
 
 const OPENAI_IMAGE_SETTINGS: ImageSettingOptions = {
@@ -143,3 +145,9 @@ export const OPENAI_VIDEO_MODEL_OPTIONS: VideoModelOption[] = [
 export const OPENAI_VIDEO_SETTING_OPTIONS: Record<string, VideoSettingOptions> = Object.fromEntries(
   OPENAI_VIDEO_MODEL_OPTIONS.map((model) => [model.value, SORA_SETTINGS]),
 );
+
+export type SpeechModelOption = { value: string; label: string; voices: SpeechVoice[] };
+
+export function speechOptions(models: Record<string, SpeechModelInfo>): SpeechModelOption[] {
+  return Object.entries(models).map(([value, info]) => ({ value, label: info.label, voices: info.voices }));
+}

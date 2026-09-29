@@ -8,7 +8,7 @@ import { LOCAL_USER_ID } from "../src/host/local/auth.ts";
 
 const uploads = path.join("data", "uploads", "local", "e2e");
 await mkdir(uploads, { recursive: true });
-for (const file of ["clip-a.mp4", "silent.mp4", "end.png"]) {
+for (const file of ["clip-a.mp4", "silent.mp4", "end.png", "line.wav"]) {
   await cp(path.join("e2e", "fixtures", file), path.join(uploads, file));
 }
 
@@ -28,10 +28,28 @@ const nodes = [
     data: {
       label: "Sequence",
       aspectRatio: "9:16",
+      voice: { model: "openai/gpt-4o-mini-tts", voiceId: "coral" },
       items: [
-        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null },
-        { sourceNodeId: id("vs"), kind: "video", trimStart: 0, trimEnd: null },
-        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1 },
+        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+        {
+          sourceNodeId: id("vs"),
+          kind: "video",
+          trimStart: 0,
+          trimEnd: null,
+          // A voiced line over the clip that has no sound of its own.
+          voiceover: {
+            text: "Meet the stand.",
+            audio: {
+              url: "/uploads/local/e2e/line.wav",
+              mediaId: "e2e-line",
+              seconds: 1.5,
+              model: "openai/gpt-4o-mini-tts",
+              voiceId: "coral",
+              text: "Meet the stand.",
+            },
+          },
+        },
+        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1, voiceover: null },
       ],
       lastExport: null,
     },
