@@ -1,0 +1,1 @@
+ALTER TYPE "public"."MediaType" ADD VALUE 'AUDIO';

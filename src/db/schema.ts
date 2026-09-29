@@ -21,7 +21,7 @@ const tstz = (name: string) =>
 
 const ts = (name: string) => timestamp(name, { precision: 3, mode: "date" });
 
-export const mediaTypeEnum = pgEnum("MediaType", ["IMAGE", "VIDEO"]);
+export const mediaTypeEnum = pgEnum("MediaType", ["IMAGE", "VIDEO", "AUDIO"]);
 
 export const mediaSourceEnum = pgEnum("MediaSource", ["node", "chat"]);
 
