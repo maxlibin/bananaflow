@@ -46,37 +46,56 @@ export function sourceMedia(node: Node): SequenceMedia | null {
   return null;
 }
 
+// Text a Shot node carries for the video it feeds.
+export type ShotLines = { voiceover: string; onScreenText: string };
+
 // Edges decide membership: items of disconnected sources are dropped, new
 // sources are appended in `sources` order, existing items keep their edits.
-// `voiceLines` pre-fills new items' voiceover from the Shot node feeding
-// their source (see shotVoiceLines).
+// `lines` pre-fills new items' voiceover and on-screen text from the Shot
+// node feeding their source (see shotLines).
 export function syncSequenceItems(
   items: SequenceItem[],
   sources: Node[],
-  voiceLines: Record<string, string>,
+  lines: Record<string, ShotLines>,
 ): SequenceItem[] {
   const connected = new Map<string, "video" | "image">();
   for (const source of sources) {
     const kind = sourceKind(source);
     if (kind) connected.set(source.id, kind);
   }
-  // Items saved before voiceover existed have no `voiceover` field.
+  // Items saved before voiceover or captions existed lack those fields.
   const kept = items
     .filter((item) => connected.get(item.sourceNodeId) === item.kind)
-    .map((item) => ({ ...item, voiceover: item.voiceover ?? null }));
+    .map((item) => ({ ...item, voiceover: item.voiceover ?? null, onScreenText: item.onScreenText ?? null }));
   const keptIds = new Set(kept.map((item) => item.sourceNodeId));
   const added: SequenceItem[] = [];
   for (const [sourceNodeId, kind] of connected) {
     if (keptIds.has(sourceNodeId)) continue;
-    const line = voiceLines[sourceNodeId];
-    const voiceover = line ? { text: line, audio: null } : null;
+    const shot = lines[sourceNodeId];
+    const voiceover = shot?.voiceover ? { text: shot.voiceover, audio: null } : null;
+    const onScreenText = shot?.onScreenText || null;
     added.push(
       kind === "video"
-        ? { sourceNodeId, kind, trimStart: 0, trimEnd: null, voiceover }
-        : { sourceNodeId, kind, holdSeconds: SEQUENCE_LIMITS.defaultHoldSeconds, voiceover },
+        ? { sourceNodeId, kind, trimStart: 0, trimEnd: null, voiceover, onScreenText }
+        : { sourceNodeId, kind, holdSeconds: SEQUENCE_LIMITS.defaultHoldSeconds, voiceover, onScreenText },
     );
   }
   return [...kept, ...added];
+}
+
+// Voiceover and on-screen text of the Shot node feeding each video node,
+// keyed by video id; shots with neither are left out.
+export function shotLines(nodes: Node[], edges: Edge[]): Record<string, ShotLines> {
+  const lines: Record<string, ShotLines> = {};
+  for (const edge of edges) {
+    const source = nodes.find((node) => node.id === edge.source);
+    if (source?.type !== "shotNode") continue;
+    const shot = (source.data as { shot?: { voiceover?: string; onScreenText?: string } }).shot;
+    const voiceover = (shot?.voiceover ?? "").trim();
+    const onScreenText = (shot?.onScreenText ?? "").trim();
+    if (voiceover || onScreenText) lines[edge.target] = { voiceover, onScreenText };
+  }
+  return lines;
 }
 
 function requireIndex(items: SequenceItem[], index: number): SequenceItem {

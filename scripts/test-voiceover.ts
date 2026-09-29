@@ -2,14 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Edge, Node } from "@xyflow/react";
 
-import { syncSequenceItems, validateSequence } from "../src/lib/sequence/model.ts";
+import { shotLines, syncSequenceItems, validateSequence } from "../src/lib/sequence/model.ts";
 import type { SequenceItem, SequenceMedia } from "../src/lib/sequence/types.ts";
 import {
   DUCK_LEVEL,
   duckingGain,
   setVoiceAudio,
   setVoiceText,
-  shotVoiceLines,
   voiceoverStatus,
 } from "../src/lib/sequence/voiceover.ts";
 import { mixVoice } from "../src/lib/sequence/voiceover.ts";
@@ -35,7 +34,7 @@ test("voiceoverStatus covers every state", () => {
 
 test("blank lines are no line", () => {
   assert.equal(voiceoverStatus({ text: "   ", audio: null }, voice, 4), "none");
-  const items: SequenceItem[] = [{ sourceNodeId: "v1", kind: "image", holdSeconds: 3, voiceover: null }];
+  const items: SequenceItem[] = [{ sourceNodeId: "v1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null }];
   assert.deepEqual(setVoiceText(items, 0, "  ")[0].voiceover, null);
   assert.deepEqual(setVoiceText(items, 0, " Buy now ")[0].voiceover, { text: "Buy now", audio: null });
 });
@@ -44,7 +43,7 @@ test("changing the voice makes every voiced line stale", () => {
   const other = { model: voice.model, voiceId: "onyx" };
   assert.equal(voiceoverStatus({ text: "Hi", audio: audio("Hi", 1) }, other, 4), "stale");
   const items: SequenceItem[] = [
-    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: { text: "Hi", audio: audio("Hi", 1) } },
+    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: { text: "Hi", audio: audio("Hi", 1) }, onScreenText: null },
   ];
   const media: Record<string, SequenceMedia | null> = { o1: { kind: "image", url: "u" } };
   assert.deepEqual(validateSequence(items, media, voice), { ok: true, totalSeconds: 3 });
@@ -54,7 +53,7 @@ test("changing the voice makes every voiced line stale", () => {
 
 test("a line longer than a still is too long", () => {
   const items: SequenceItem[] = [
-    { sourceNodeId: "o1", kind: "image", holdSeconds: 2, voiceover: { text: "Hi", audio: audio("Hi", 2.4) } },
+    { sourceNodeId: "o1", kind: "image", holdSeconds: 2, voiceover: { text: "Hi", audio: audio("Hi", 2.4) }, onScreenText: null },
   ];
   assert.deepEqual(validateSequence(items, { o1: { kind: "image", url: "u" } }, voice), {
     ok: false,
@@ -63,7 +62,7 @@ test("a line longer than a still is too long", () => {
 });
 
 test("an unvoiced line blocks export and names the item", () => {
-  const items: SequenceItem[] = [{ sourceNodeId: "o1", kind: "image", holdSeconds: 2, voiceover: { text: "Hi", audio: null } }];
+  const items: SequenceItem[] = [{ sourceNodeId: "o1", kind: "image", holdSeconds: 2, voiceover: { text: "Hi", audio: null }, onScreenText: null }];
   assert.deepEqual(validateSequence(items, { o1: { kind: "image", url: "u" } }, voice), {
     ok: false,
     reason: "Item 1's voiceover is not voiced yet",
@@ -73,7 +72,7 @@ test("an unvoiced line blocks export and names the item", () => {
 test("items saved before voiceover existed read as having no line", () => {
   const legacy = [{ sourceNodeId: "o1", kind: "image", holdSeconds: 3 }] as unknown as SequenceItem[];
   const synced = syncSequenceItems(legacy, [node("o1", "outputNode", { result: { imageUrls: ["u"] } })], {});
-  assert.deepEqual(synced, [{ sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null }]);
+  assert.deepEqual(synced, [{ sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null }]);
   assert.deepEqual(validateSequence(synced, { o1: { kind: "image", url: "u" } }, null), { ok: true, totalSeconds: 3 });
 });
 
@@ -88,8 +87,8 @@ test("new items take their shot's voiceover line; existing lines are kept", () =
     { id: "e1", source: "sh1", target: "va", targetHandle: "input" },
     { id: "e2", source: "sh2", target: "vb", targetHandle: "input" },
   ];
-  const lines = shotVoiceLines(nodes, edges);
-  assert.deepEqual(lines, { va: "Meet the stand." });
+  const lines = shotLines(nodes, edges);
+  assert.deepEqual(lines, { va: { voiceover: "Meet the stand.", onScreenText: "" } });
   const synced = syncSequenceItems([], [nodes[2], nodes[3]], lines);
   assert.deepEqual(synced.map((item) => item.voiceover), [{ text: "Meet the stand.", audio: null }, null]);
   const edited = setVoiceText(synced, 0, "Edited line");
@@ -97,7 +96,7 @@ test("new items take their shot's voiceover line; existing lines are kept", () =
 });
 
 test("setVoiceAudio stores audio made from the current text only", () => {
-  const items = setVoiceText([{ sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null }], 0, "Hi");
+  const items = setVoiceText([{ sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null }], 0, "Hi");
   assert.deepEqual(setVoiceAudio(items, 0, audio("Hi", 1))[0].voiceover, { text: "Hi", audio: audio("Hi", 1) });
   assert.throws(() => setVoiceAudio(items, 0, audio("Old text", 1)), /made from different text/);
 });
@@ -130,7 +129,7 @@ import { attachVoiceAudio, maxSpeechSeconds } from "../src/lib/sequence/voiceove
 test("a voice that fits the raw clip but not its rendered frames is too long", () => {
   // 5.042s renders as 151 frames = 5.033s; a 5.04s line would be cut off.
   const items: SequenceItem[] = [
-    { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: { text: "Hi", audio: audio("Hi", 5.04) } },
+    { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: { text: "Hi", audio: audio("Hi", 5.04) }, onScreenText: null },
   ];
   const check = validateSequence(items, { v1: { kind: "video", url: "u", seconds: 5.042 } }, voice);
   assert.equal(check.ok, false);
@@ -138,8 +137,8 @@ test("a voice that fits the raw clip but not its rendered frames is too long", (
 
 test("voice audio attaches to the item by source, only while its text is unchanged", () => {
   const items: SequenceItem[] = [
-    { sourceNodeId: "a", kind: "image", holdSeconds: 3, voiceover: { text: "One", audio: null } },
-    { sourceNodeId: "b", kind: "image", holdSeconds: 3, voiceover: { text: "Two edited", audio: null } },
+    { sourceNodeId: "a", kind: "image", holdSeconds: 3, voiceover: { text: "One", audio: null }, onScreenText: null },
+    { sourceNodeId: "b", kind: "image", holdSeconds: 3, voiceover: { text: "Two edited", audio: null }, onScreenText: null },
   ];
   const attached = attachVoiceAudio(items, "a", audio("One", 1));
   assert.deepEqual(attached[0].voiceover, { text: "One", audio: audio("One", 1) });

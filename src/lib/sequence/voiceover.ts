@@ -1,4 +1,3 @@
-import type { Edge, Node } from "@xyflow/react";
 import { InvalidSequenceEditError } from "./model";
 import type { SequenceItem, SequenceVoice, SequenceVoiceAudio, SequenceVoiceover } from "./types";
 
@@ -44,18 +43,6 @@ export function setVoiceAudio(items: SequenceItem[], index: number, audio: Seque
   return items.map((existing, position) =>
     position === index ? { ...item, voiceover: { text: item.voiceover!.text, audio } } : existing,
   );
-}
-
-// Voiceover text of the Shot node feeding each video node, keyed by video id.
-export function shotVoiceLines(nodes: Node[], edges: Edge[]): Record<string, string> {
-  const lines: Record<string, string> = {};
-  for (const edge of edges) {
-    const source = nodes.find((node) => node.id === edge.source);
-    if (source?.type !== "shotNode") continue;
-    const line = ((source.data as { shot?: { voiceover?: string } }).shot?.voiceover ?? "").trim();
-    if (line) lines[edge.target] = line;
-  }
-  return lines;
 }
 
 // Gain for the clip's own audio at `time` seconds into an item whose voice

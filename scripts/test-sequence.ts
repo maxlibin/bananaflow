@@ -38,17 +38,17 @@ test("sourceMedia reads the current output of each source kind", () => {
 test("syncSequenceItems appends new sources, keeps edits and drops disconnected ones", () => {
   const first = syncSequenceItems([], [clip, still, prompt], {});
   assert.deepEqual(first, [
-    { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
-    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null },
+    { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: null, onScreenText: null },
+    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null },
   ]);
   const trimmed = setTrim(first, 0, 1, 4, 6);
   const second = syncSequenceItems(trimmed, [still, input], {});
   assert.deepEqual(second, [
-    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null },
-    { sourceNodeId: "i1", kind: "image", holdSeconds: 3, voiceover: null },
+    { sourceNodeId: "o1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null },
+    { sourceNodeId: "i1", kind: "image", holdSeconds: 3, voiceover: null, onScreenText: null },
   ]);
   const third = syncSequenceItems(trimmed, [clip, still], {});
-  assert.deepEqual(third[0], { sourceNodeId: "v1", kind: "video", trimStart: 1, trimEnd: 4, voiceover: null });
+  assert.deepEqual(third[0], { sourceNodeId: "v1", kind: "video", trimStart: 1, trimEnd: 4, voiceover: null, onScreenText: null });
 });
 
 test("moveItem, setTrim and setHold return new lists and reject bad edits", () => {
@@ -61,7 +61,7 @@ test("moveItem, setTrim and setHold return new lists and reject bad edits", () =
   assert.throws(() => setHold(items, 1, 0.2), InvalidSequenceEditError);
   assert.throws(() => setHold(items, 0, 3), InvalidSequenceEditError);
   assert.throws(() => moveItem(items, 0, 5), InvalidSequenceEditError);
-  assert.deepEqual(setHold(items, 1, 4.5)[1], { sourceNodeId: "o1", kind: "image", holdSeconds: 4.5, voiceover: null });
+  assert.deepEqual(setHold(items, 1, 4.5)[1], { sourceNodeId: "o1", kind: "image", holdSeconds: 4.5, voiceover: null, onScreenText: null });
 });
 
 test("validateSequence totals the cut and names the item that blocks export", () => {
@@ -84,7 +84,7 @@ test("validateSequence totals the cut and names the item that blocks export", ()
     { ok: false, reason: "Item 1 is still loading its length" },
   );
   assert.deepEqual(validateSequence([], media, null), { ok: false, reason: "Add at least one clip or image" });
-  const long = Array.from({ length: 19 }, (_, index) => ({ sourceNodeId: `s${index}`, kind: "image" as const, holdSeconds: 10, voiceover: null }));
+  const long = Array.from({ length: 19 }, (_, index) => ({ sourceNodeId: `s${index}`, kind: "image" as const, holdSeconds: 10, voiceover: null, onScreenText: null }));
   const longMedia = Object.fromEntries(long.map((item) => [item.sourceNodeId, { kind: "image" as const, url: "u" }]));
   assert.deepEqual(validateSequence(long, longMedia, null), { ok: false, reason: "The cut is 190s; the limit is 180s" });
 });
@@ -111,7 +111,7 @@ test("re-running assembleCut adds missing shots and keeps existing trims", () =>
   const sequenceNode = node("seq", "sequenceNode", {
     label: "Sequence",
     aspectRatio: "9:16",
-    items: [{ sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null }],
+    items: [{ sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null, onScreenText: null }],
     lastExport: null,
     scriptNodeId: "s1",
   });
@@ -121,8 +121,8 @@ test("re-running assembleCut adds missing shots and keeps existing trims", () =>
   assert.equal(graph.nodes.filter((candidate) => candidate.type === "sequenceNode").length, 1);
   const items = (graph.nodes.find((candidate) => candidate.id === "seq")!.data as { items: SequenceItem[] }).items;
   assert.deepEqual(items, [
-    { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null },
-    { sourceNodeId: "vb", kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+    { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null, onScreenText: null },
+    { sourceNodeId: "vb", kind: "video", trimStart: 0, trimEnd: null, voiceover: null, onScreenText: null },
   ]);
 });
 
@@ -144,7 +144,7 @@ test("every script aspect ratio has a sequence output size", () => {
 });
 
 test("validateSequence names a trim that starts past a shortened clip", () => {
-  const items: SequenceItem[] = [{ sourceNodeId: "v1", kind: "video", trimStart: 5, trimEnd: null, voiceover: null }];
+  const items: SequenceItem[] = [{ sourceNodeId: "v1", kind: "video", trimStart: 5, trimEnd: null, voiceover: null, onScreenText: null }];
   const media = { v1: { kind: "video" as const, url: "u", seconds: 4 } };
   assert.deepEqual(validateSequence(items, media, null), {
     ok: false,
@@ -153,9 +153,9 @@ test("validateSequence names a trim that starts past a shortened clip", () => {
 });
 
 test("item length is quantised to whole frames so audio and video stay in step", () => {
-  const clip: SequenceItem = { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: null };
+  const clip: SequenceItem = { sourceNodeId: "v1", kind: "video", trimStart: 0, trimEnd: null, voiceover: null, onScreenText: null };
   assert.equal(itemFrames(clip, { kind: "video", url: "u", seconds: 5.042 }), 151);
-  const still: SequenceItem = { sourceNodeId: "o1", kind: "image", holdSeconds: 2.25, voiceover: null };
+  const still: SequenceItem = { sourceNodeId: "o1", kind: "image", holdSeconds: 2.25, voiceover: null, onScreenText: null };
   assert.equal(itemFrames(still, { kind: "image", url: "u" }), 68);
 });
 
@@ -164,7 +164,7 @@ test("regenerating a take moves the sequence item and edge to the new node", () 
     node("seq", "sequenceNode", {
       label: "Sequence",
       aspectRatio: "9:16",
-      items: [{ sourceNodeId: "old", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null }],
+      items: [{ sourceNodeId: "old", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null, onScreenText: null }],
       lastExport: null,
     }),
   ];
@@ -175,7 +175,7 @@ test("regenerating a take moves the sequence item and edge to the new node", () 
   const graph = retargetSequenceSource(nodes, edges, "old", "new");
   assert.deepEqual(graph.edges.map((edge) => [edge.source, edge.target]), [["new", "seq"], ["shot", "old"]]);
   assert.deepEqual((graph.nodes[0].data as { items: SequenceItem[] }).items, [
-    { sourceNodeId: "new", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null },
+    { sourceNodeId: "new", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null, onScreenText: null },
   ]);
 });
 
@@ -184,8 +184,8 @@ test("assembleCut takes one video per shot and inserts new shots in story order"
     label: "Sequence",
     aspectRatio: "9:16",
     items: [
-      { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null },
-      { sourceNodeId: "vc", kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+      { sourceNodeId: "va", kind: "video", trimStart: 1, trimEnd: 3, voiceover: null, onScreenText: null },
+      { sourceNodeId: "vc", kind: "video", trimStart: 0, trimEnd: null, voiceover: null, onScreenText: null },
     ],
     lastExport: null,
     scriptNodeId: "s1",

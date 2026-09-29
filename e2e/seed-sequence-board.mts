@@ -30,7 +30,7 @@ const nodes = [
       aspectRatio: "9:16",
       voice: { model: "openai/gpt-4o-mini-tts", voiceId: "coral" },
       items: [
-        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null, voiceover: null },
+        { sourceNodeId: id("va"), kind: "video", trimStart: 0, trimEnd: null, voiceover: null, onScreenText: null },
         {
           sourceNodeId: id("vs"),
           kind: "video",
@@ -48,8 +48,9 @@ const nodes = [
               text: "Meet the stand.",
             },
           },
+          onScreenText: null,
         },
-        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1, voiceover: null },
+        { sourceNodeId: id("end"), kind: "image", holdSeconds: 1, voiceover: null, onScreenText: null },
       ],
       lastExport: null,
     },
