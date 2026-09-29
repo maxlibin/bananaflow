@@ -12,6 +12,17 @@ export const MAX_ON_SCREEN_CHARACTERS = 80;
 const MAX_CHUNK_WORDS = 3;
 const MAX_CHUNK_CHARACTERS = 22;
 
+// Where each layer sits and how tall its text is, as fractions of the frame
+// height; the export and the preview player share these.
+export const CAPTION_LAYOUT = {
+  spoken: { y: 0.72, size: 0.05 },
+  onScreen: { y: 0.14, size: 0.045 },
+} as const;
+// Outline width as a fraction of the font size.
+export const CAPTION_OUTLINE = 0.18;
+// Text wraps (and, failing that, shrinks) to fit this share of the width.
+export const CAPTION_MAX_WIDTH = 0.9;
+
 // Seconds on the cut's timeline.
 export type CaptionCue = { start: number; end: number; text: string; layer: "spoken" | "onScreen" };
 

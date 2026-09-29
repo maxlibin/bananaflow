@@ -13,6 +13,8 @@ import {
   canEncode,
   canEncodeAudio,
 } from "mediabunny";
+import { captionCues } from "./captions";
+import { drawCaption } from "./draw-caption";
 import { itemFrames } from "./model";
 import { mixVoice, voiceoverStatus } from "./voiceover";
 import {
@@ -163,7 +165,17 @@ export async function renderSequence(input: {
   // Each item lasts a whole number of frames; audio uses the same length.
   const frameCounts = input.data.items.map((item) => itemFrames(item, input.mediaById[item.sourceNodeId]));
   const totalSeconds = frameCounts.reduce((sum, frames) => sum + frames, 0) * frameDuration;
+  const cues = captionCues(input.data.items, input.mediaById, input.data.voice ?? null, input.data.captions ?? null);
   let offset = 0;
+
+  // Cues are matched at the frame's midpoint, so float drift in item offsets
+  // never shows a title one frame early or late.
+  const drawCues = (frameStart: number) => {
+    const time = frameStart + frameDuration / 2;
+    for (const cue of cues) {
+      if (cue.start <= time && time < cue.end) drawCaption(context, cue, width, height);
+    }
+  };
 
   const drawFitted = (source: CanvasImageSource, sourceWidth: number, sourceHeight: number) => {
     const scale = Math.min(width / sourceWidth, height / sourceHeight);
@@ -207,9 +219,10 @@ export async function renderSequence(input: {
         const bitmap = await createImageBitmap(blob).catch((error: Error) => {
           throw new SequenceRenderError(`${label}: could not decode the image (${error.message})`);
         });
-        drawFitted(bitmap, bitmap.width, bitmap.height);
         for (let frame = 0; frame < frames; frame += 1) {
           if (input.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
+          drawFitted(bitmap, bitmap.width, bitmap.height);
+          drawCues(offset + frame * frameDuration);
           await videoSource.add(offset + frame * frameDuration, frameDuration);
           input.onProgress((offset + frame * frameDuration) / totalSeconds);
         }
@@ -230,6 +243,7 @@ export async function renderSequence(input: {
             context.fillStyle = "#000";
             context.fillRect(0, 0, width, height);
           }
+          drawCues(offset + frame * frameDuration);
           await videoSource.add(offset + frame * frameDuration, frameDuration);
           input.onProgress((offset + frame * frameDuration) / totalSeconds);
           frame += 1;
