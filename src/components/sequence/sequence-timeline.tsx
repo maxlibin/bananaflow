@@ -7,6 +7,7 @@ import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { useCanvasHost } from "../canvas-host/context";
 import { limitNotice } from "../../lib/host/limit-notice";
+import { MAX_ON_SCREEN_CHARACTERS, setOnScreenText } from "../../lib/sequence/captions";
 import { SpeakError, speakLine } from "../../lib/sequence/speak";
 import {
   MAX_LINE_CHARACTERS,
@@ -47,6 +48,39 @@ function SecondsField({
       className="h-7 w-20"
       value={draft}
       disabled={disabled}
+      data-testid={testId}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") commit();
+      }}
+    />
+  );
+}
+
+// A title burned over the whole item; applied on Enter or blur like the
+// other fields.
+function OnScreenTextField({
+  value,
+  testId,
+  onCommit,
+}: {
+  value: string | null;
+  testId: string;
+  onCommit: (text: string) => boolean;
+}) {
+  const [draft, setDraft] = useState(value ?? "");
+  useEffect(() => setDraft(value ?? ""), [value]);
+  const commit = () => {
+    if (draft.trim() === (value ?? "")) return;
+    if (!onCommit(draft)) setDraft(value ?? "");
+  };
+  return (
+    <Input
+      className="h-7 w-full text-xs"
+      placeholder="On-screen text (optional)"
+      value={draft}
+      maxLength={MAX_ON_SCREEN_CHARACTERS}
       data-testid={testId}
       onChange={(event) => setDraft(event.target.value)}
       onBlur={commit}
@@ -242,6 +276,11 @@ export function SequenceTimeline({
             >
               <X className="h-3.5 w-3.5" />
             </Button>
+            <OnScreenTextField
+              value={item.onScreenText ?? null}
+              testId={`sequence-onscreen-text-${index}`}
+              onCommit={(text) => apply(() => setOnScreenText(items, index, text))}
+            />
             <VoiceoverRow
               nodeId={nodeId}
               items={items}

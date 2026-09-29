@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { SequenceCaptionToggles } from "./sequence-captions";
 import { SequencePlayer } from "./sequence-player";
 import { SequenceExport } from "./sequence-export";
 import { SequenceVoicePicker } from "./sequence-voice";
@@ -35,6 +36,7 @@ function SequencePanelBody({ nodeId }: { nodeId: string }) {
   return (
     <div className="flex flex-col gap-3 p-4">
       <SequenceVoicePicker nodeId={nodeId} data={data} mediaById={mediaById} onBatchChange={setBatchRunning} />
+      <SequenceCaptionToggles nodeId={nodeId} data={data} />
       <SequencePlayer data={data} mediaById={mediaById} />
       <div className="text-xs" data-testid="sequence-check">
         {check.ok ? `${check.totalSeconds.toFixed(1)}s` : check.reason}
